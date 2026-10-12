@@ -9,8 +9,6 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
-        with:
-          path: repo_code
 
       - name: Set up Java Environment
         uses: actions/setup-java@v4
@@ -23,26 +21,23 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Build Flawless Project Structure
+      - name: Rebuild Android Directory Structure
         run: |
-          # 1. Create a brand new, mathematically perfect Flutter template in a fresh folder
-          flutter create water_app_fresh --platforms=android
+          # 1. Force-create a completely fresh android folder directly in the root workspace
+          flutter create . --platforms=android --force
           
-          # 2. Safely copy your custom water delivery code into this perfect structure
-          cp repo_code/pubspec.yaml water_app_fresh/pubspec.yaml
-          cp repo_code/lib/main.dart water_app_fresh/lib/main.dart
-          
-          # 3. Inject the Android network permission so your phone can talk to your Chromebook over HTTP
-          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' water_app_fresh/android/app/src/main/AndroidManifest.xml
+          # 2. Add the cleartext rule so your phone app can talk to your Chromebook IP
+          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
+
+      - name: Install Project Dependencies
+        run: flutter pub get
 
       - name: Compile Production APK
-        run: |
-          cd water_app_fresh
-          flutter pub get
-          flutter build apk --release
+        run: flutter build apk --release
 
       - name: Upload Finished APK File
         uses: actions/upload-artifact@v4
         with:
           name: water-delivery-apk
-          path: water_app_fresh/build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
