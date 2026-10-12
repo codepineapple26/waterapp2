@@ -23,13 +23,13 @@ jobs:
           cache: true
 
       - name: Create Android project files
-        run: flutter create --platforms=android --project-name water_delivery "$RUNNER_TEMP/water_delivery"
+        run: flutter create --platforms=android --project-name waterapp2 "$RUNNER_TEMP/waterapp2"
 
       - name: Copy app files into the Flutter project
         run: |
-          cp pubspec.yaml "$RUNNER_TEMP/water_delivery/pubspec.yaml"
-          mkdir -p "$RUNNER_TEMP/water_delivery/lib"
-          cp lib/main.dart "$RUNNER_TEMP/water_delivery/lib/main.dart"
+          cp pubspec.yaml "$RUNNER_TEMP/waterapp2/pubspec.yaml"
+          mkdir -p "$RUNNER_TEMP/waterapp2/lib"
+          cp lib/main.dart "$RUNNER_TEMP/waterapp2/lib/main.dart"
 
       - name: Add Android internet permission
         run: |
@@ -37,7 +37,7 @@ jobs:
           from pathlib import Path
 
           manifest = Path(
-              "$RUNNER_TEMP/water_delivery/android/app/src/main/AndroidManifest.xml"
+              "$RUNNER_TEMP/waterapp2/android/app/src/main/AndroidManifest.xml"
           )
           text = manifest.read_text()
           closing = text.find(">")
@@ -50,15 +50,15 @@ jobs:
           PY
 
       - name: Get packages
-        working-directory: ${{ runner.temp }}/water_delivery
+        working-directory: ${{ runner.temp }}/waterapp2
         run: flutter pub get
 
       - name: Build APK
-        working-directory: ${{ runner.temp }}/water_delivery
+        working-directory: ${{ runner.temp }}/waterapp2
         run: flutter build apk --debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: water-delivery-apk
-          path: ${{ runner.temp }}/water_delivery/build/app/outputs/flutter-apk/app-debug.apk
+          path: ${{ runner.temp }}/waterapp2/build/app/outputs/flutter-apk/app-debug.apk
