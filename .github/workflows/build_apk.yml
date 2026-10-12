@@ -7,9 +7,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
-
       - name: Set up Java Environment
         uses: actions/setup-java@v4
         with:
@@ -21,10 +18,27 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Generate Complete App Architecture
+      - name: Generate Fresh Android Skeleton
         run: |
-          # This tells Flutter to safely auto-build the complete native Android structural folder inside your exact repository directory
-          flutter create . --platforms=android --force
+          # Step 1: Create a perfectly fresh project template in a temporary folder
+          flutter create temp_app --platforms=android
+          
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          path: repo_code
+
+      - name: Merge Code Into Template Structural Folders
+        run: |
+          # Step 2: Copy the clean Android configuration folders into the active build zone
+          cp -r temp_app/android $GITHUB_WORKSPACE/android
+          
+          # Step 3: Ensure standard structural directories exist locally
+          mkdir -p $GITHUB_WORKSPACE/lib
+          
+          # Step 4: Overwrite configuration templates with your custom app repository code
+          if [ -f repo_code/pubspec.yaml ]; then cp repo_code/pubspec.yaml $GITHUB_WORKSPACE/pubspec.yaml; fi
+          if [ -f repo_code/lib/main.dart ]; then cp repo_code/lib/main.dart $GITHUB_WORKSPACE/lib/main.dart; fi
 
       - name: Initialize Project Configurations
         run: flutter pub get
