@@ -37,7 +37,7 @@ jobs:
 
           manifest_path = Path("android/app/src/main/AndroidManifest.xml")
           if not manifest_path.exists():
-              raise FileNotFoundError(f"Missing AndroidManifest.xml at {manifest_path}")
+              raise FileNotFoundError(f"AndroidManifest.xml not found: {manifest_path}")
 
           xml = manifest_path.read_text()
 
@@ -58,7 +58,7 @@ jobs:
               )
 
           manifest_path.write_text(xml)
-          print(xml)
+          print("AndroidManifest.xml updated for INTERNET + cleartext traffic")
           PY
 
       - name: Install project dependencies
