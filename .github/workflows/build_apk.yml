@@ -21,13 +21,36 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Rebuild Android Directory Structure
+            - name: Rebuild Android Directory Structure
         run: |
-          # 1. Force-create a completely fresh android folder directly in the root workspace
           flutter create . --platforms=android --force
-          
-          # 2. Add the cleartext rule so your phone app can talk to your Chromebook IP
-          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          xml = manifest.read_text()
+
+          permission = '<uses-permission android:name="android.permission.INTERNET" />'
+          if permission not in xml:
+              xml = xml.replace(
+                  "<application",
+                  f"    {permission}\n    <application",
+                  1,
+              )
+
+          cleartext = 'android:usesCleartextTraffic="true"'
+          if cleartext not in xml:
+              xml = xml.replace(
+                  "<application",
+                  f'<application {cleartext}',
+                  1,
+              )
+
+          manifest.write_text(xml)
+          print(xml)
+          PY
+
 
       - name: Install Project Dependencies
         run: flutter pub get
