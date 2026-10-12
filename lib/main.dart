@@ -1,9 +1,10 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:pocketbase/pocketbase.dart';
 
-// --- FIXED LOCAL NETWORK CONNECTION ---
-const String pocketBaseUrl = 'http://10.253.154.218:8090'; 
-
+const String pocketBaseUrl = 'http://10.253.154.218:8090';
 const String ordersCollection = 'orders';
 const double pricePerJug = 5.00;
 
@@ -56,6 +57,34 @@ class _OrderPageState extends State<OrderPage> {
     super.dispose();
   }
 
+  Future<void> _checkServerReachable() async {
+    final uri = Uri.parse(pocketBaseUrl);
+
+    try {
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 5);
+
+      final request = await client.getUrl(uri).timeout(const Duration(seconds: 5));
+      final response = await request.close().timeout(const Duration(seconds: 5));
+
+      debugPrint('PocketBase health check status: ${response.statusCode}');
+      client.close();
+
+      if (response.statusCode >= 500) {
+        throw HttpException('PocketBase returned status ${response.statusCode}');
+      }
+    } on TimeoutException catch (e) {
+      debugPrint('PocketBase health check timeout: $e');
+      rethrow;
+    } on SocketException catch (e) {
+      debugPrint('PocketBase health check socket exception: $e');
+      rethrow;
+    } catch (e, st) {
+      debugPrint('PocketBase health check error: $e\n$st');
+      rethrow;
+    }
+  }
+
   Future<void> _submitOrder() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -66,17 +95,22 @@ class _OrderPageState extends State<OrderPage> {
     });
 
     try {
-      final record = await pocketBase.collection(ordersCollection).create(
-        body: {
-          'customer_name': _nameController.text.trim(),
-          'phone': _phoneController.text.trim(),
-          'address': _addressController.text.trim(),
-          'quantity': quantity,
-          'notes': _notesController.text.trim(),
-          'status': 'New',
-          'total': quantity * pricePerJug,
-        },
-      );
+      await _checkServerReachable();
+
+      final record = await pocketBase
+          .collection(ordersCollection)
+          .create(
+            body: {
+              'customer_name': _nameController.text.trim(),
+              'phone': _phoneController.text.trim(),
+              'address': _addressController.text.trim(),
+              'quantity': quantity,
+              'notes': _notesController.text.trim(),
+              'status': 'New',
+              'total': quantity * pricePerJug,
+            },
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (!mounted) return;
 
@@ -92,9 +126,45 @@ class _OrderPageState extends State<OrderPage> {
           backgroundColor: Colors.green,
         ),
       );
-    } catch (error) {
+    } on SocketException catch (e) {
       if (!mounted) return;
 
+      debugPrint('SocketException during order submit: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Network error: cannot reach PocketBase. Check your server IP, Wi‑Fi, and server status.',
+          ),
+          duration: Duration(seconds: 6),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } on TimeoutException catch (e) {
+      if (!mounted) return;
+
+      debugPrint('TimeoutException during order submit: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Request timed out. PocketBase may be offline or unreachable.'),
+          duration: Duration(seconds: 6),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } on HttpException catch (e) {
+      if (!mounted) return;
+
+      debugPrint('HttpException during order submit: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Server error: $e'),
+          duration: const Duration(seconds: 6),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (error, st) {
+      if (!mounted) return;
+
+      debugPrint('Other error during order submit: $error\n$st');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Could not place order: $error'),
