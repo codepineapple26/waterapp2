@@ -1,64 +1,40 @@
-name: Build Flutter APK
+name: Flutter APK Online Compiler
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
+      - name: Check out repository code
         uses: actions/checkout@v4
 
-      - name: Set up Flutter
+      - name: Set up Java Environment
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter Environment
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
-          cache: true
+          channel: 'stable'
 
-      - name: Create Android project files
-        run: flutter create --platforms=android --project-name waterapp2 "$RUNNER_TEMP/waterapp2"
-
-      - name: Copy app files into the Flutter project
+      - name: Generate Complete App Architecture
         run: |
-          cp pubspec.yaml "$RUNNER_TEMP/waterapp2/pubspec.yaml"
-          mkdir -p "$RUNNER_TEMP/waterapp2/lib"
-          cp lib/main.dart "$RUNNER_TEMP/waterapp2/lib/main.dart"
+          # This tells Flutter to safely auto-build the complete native Android structural folder inside your exact repository directory
+          flutter create . --platforms=android --force
 
-      - name: Add Android internet permission
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          manifest = Path(
-              "$RUNNER_TEMP/waterapp2/android/app/src/main/AndroidManifest.xml"
-          )
-          text = manifest.read_text()
-          closing = text.find(">")
-          text = (
-              text[:closing + 1]
-              + '\n    <uses-permission android:name="android.permission.INTERNET" />'
-              + text[closing + 1:]
-          )
-          manifest.write_text(text)
-          PY
-
-      - name: Get packages
-        working-directory: ${{ runner.temp }}/waterapp2
+      - name: Initialize Project Configurations
         run: flutter pub get
 
-      - name: Build APK
-        working-directory: ${{ runner.temp }}/waterapp2
-        run: flutter build apk --debug
+      - name: Compile Production APK
+        run: flutter build apk --release
 
-      - name: Upload APK
+      - name: Upload Finished APK File
         uses: actions/upload-artifact@v4
         with:
           name: water-delivery-apk
-          path: ${{ runner.temp }}/waterapp2/build/app/outputs/flutter-apk/app-debug.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
