@@ -1,0 +1,64 @@
+name: Build Flutter APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create Android project files
+        run: flutter create --platforms=android --project-name water_delivery "$RUNNER_TEMP/water_delivery"
+
+      - name: Copy app files into the Flutter project
+        run: |
+          cp pubspec.yaml "$RUNNER_TEMP/water_delivery/pubspec.yaml"
+          mkdir -p "$RUNNER_TEMP/water_delivery/lib"
+          cp lib/main.dart "$RUNNER_TEMP/water_delivery/lib/main.dart"
+
+      - name: Add Android internet permission
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest = Path(
+              "$RUNNER_TEMP/water_delivery/android/app/src/main/AndroidManifest.xml"
+          )
+          text = manifest.read_text()
+          closing = text.find(">")
+          text = (
+              text[:closing + 1]
+              + '\n    <uses-permission android:name="android.permission.INTERNET" />'
+              + text[closing + 1:]
+          )
+          manifest.write_text(text)
+          PY
+
+      - name: Get packages
+        working-directory: ${{ runner.temp }}/water_delivery
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: ${{ runner.temp }}/water_delivery
+        run: flutter build apk --debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: water-delivery-apk
+          path: ${{ runner.temp }}/water_delivery/build/app/outputs/flutter-apk/app-debug.apk
