@@ -3,9 +3,13 @@ name: Flutter APK Online Compiler
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -13,23 +17,29 @@ jobs:
       - name: Set up Java Environment
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
+          distribution: zulu
+          java-version: "17"
 
       - name: Set up Flutter Environment
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: stable
+          cache: true
 
-            - name: Rebuild Android Directory Structure
+      - name: Rebuild Android directory structure
         run: |
-          flutter create . --platforms=android --force
+          if [ ! -d "android/app/src/main" ]; then
+            flutter create . --platforms=android --force
+          fi
 
           python3 - <<'PY'
           from pathlib import Path
 
-          manifest = Path("android/app/src/main/AndroidManifest.xml")
-          xml = manifest.read_text()
+          manifest_path = Path("android/app/src/main/AndroidManifest.xml")
+          if not manifest_path.exists():
+              raise FileNotFoundError(f"Missing AndroidManifest.xml at {manifest_path}")
+
+          xml = manifest_path.read_text()
 
           permission = '<uses-permission android:name="android.permission.INTERNET" />'
           if permission not in xml:
@@ -47,20 +57,20 @@ jobs:
                   1,
               )
 
-          manifest.write_text(xml)
+          manifest_path.write_text(xml)
           print(xml)
           PY
 
-
-      - name: Install Project Dependencies
+      - name: Install project dependencies
         run: flutter pub get
 
-      - name: Compile Production APK
+      - name: Compile production APK
         run: flutter build apk --release
 
-      - name: Upload Finished APK File
+      - name: Upload finished APK file
         uses: actions/upload-artifact@v4
         with:
           name: water-delivery-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+          retention-days: 7
