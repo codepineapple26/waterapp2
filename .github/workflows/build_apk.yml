@@ -7,6 +7,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
       - name: Set up Java Environment
         uses: actions/setup-java@v4
         with:
@@ -18,29 +21,18 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Generate Fresh Android Skeleton
+      - name: Inject Android Local Network Permissions
         run: |
-          # Step 1: Create a perfectly fresh project template in a temporary folder
-          flutter create temp_app --platforms=android
+          # 1. Force generate the missing native Android directory tree
+          flutter create . --platforms=android --force
           
-      - name: Check out repository code
-        uses: actions/checkout@v4
-        with:
-          path: repo_code
+          # 2. Add internet use permissions to the manifest file
+          sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.INTERNET"\/>' android/app/src/main/AndroidManifest.xml
+          
+          # 3. Force Android to allow cleartext HTTP (non-HTTPS) traffic to your local IP address
+          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
 
-      - name: Merge Code Into Template Structural Folders
-        run: |
-          # Step 2: Copy the clean Android configuration folders into the active build zone
-          cp -r temp_app/android $GITHUB_WORKSPACE/android
-          
-          # Step 3: Ensure standard structural directories exist locally
-          mkdir -p $GITHUB_WORKSPACE/lib
-          
-          # Step 4: Overwrite configuration templates with your custom app repository code
-          if [ -f repo_code/pubspec.yaml ]; then cp repo_code/pubspec.yaml $GITHUB_WORKSPACE/pubspec.yaml; fi
-          if [ -f repo_code/lib/main.dart ]; then cp repo_code/lib/main.dart $GITHUB_WORKSPACE/lib/main.dart; fi
-
-      - name: Initialize Project Configurations
+      - name: Install Dependencies
         run: flutter pub get
 
       - name: Compile Production APK
