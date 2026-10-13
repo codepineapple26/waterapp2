@@ -7,7 +7,7 @@ environment:
   sdk: ">=3.4.0 <4.0.0"
 
 dependencies:
-  flutter:
+  flutter:ac
     sdk: flutter
   pocketbase: ^0.25.2
 
