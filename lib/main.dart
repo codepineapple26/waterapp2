@@ -23,17 +23,22 @@ class _WaterDeliveryAppState extends State<WaterDeliveryApp> {
 
   Future<void> _handleLogout() async {
     await _service.logout();
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Widget _buildHomeScreen() {
-    final role = (_service.currentUser?.data['role'] ?? 'customer').toString().toLowerCase();
+    final role =
+        (_service.currentUser?.data['role'] ?? 'customer').toString().toLowerCase();
+
     if (role == 'driver') {
       return DriverDashboard(
         service: _service,
         onLogout: _handleLogout,
       );
     }
+
     return DashboardScreen(
       service: _service,
       onLogout: _handleLogout,
