@@ -48,12 +48,18 @@ class PocketBaseService {
       return const [];
     }
 
+    // Fetch all orders for this user, sorted by created desc
     final records = await _client.collection('orders').getFullList(
       filter: 'user_id = "$userId"',
       sort: '-created',
     );
 
     return records;
+  }
+
+  Future<RecordModel> fetchOrderById(String id) async {
+    final record = await _client.collection('orders').getOne(id);
+    return record;
   }
 
   Future<RecordModel> createDemoOrder({
@@ -85,6 +91,41 @@ class PocketBaseService {
     );
 
     return record;
+  }
+
+  Future<RecordModel> updateOrder(String id, {
+    String? address,
+    String? phone,
+    int? quantity,
+    String? notes,
+  }) async {
+    // Recalculate total if quantity provided
+    final body = <String, dynamic>{};
+    if (address != null) body['address'] = address;
+    if (phone != null) body['phone'] = phone;
+    if (quantity != null) {
+      body['quantity'] = quantity;
+      body['total'] = (quantity * 5.0);
+    }
+    if (notes != null) body['notes'] = notes;
+
+    if (body.isEmpty) {
+      throw ArgumentError('No fields provided to update');
+    }
+
+    final updated = await _client.collection('orders').update(id, body: body);
+    return updated;
+  }
+
+  Future<RecordModel> updateOrderStatus(String id, String status) async {
+    final updated = await _client.collection('orders').update(id, body: {
+      'status': status,
+    });
+    return updated;
+  }
+
+  Future<void> deleteOrder(String id) async {
+    await _client.collection('orders').delete(id);
   }
 
   Future<void> logout() async {
