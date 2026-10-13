@@ -27,7 +27,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Ensure Android project exists
+      - name: Ensure Android project scaffold exists
         run: flutter create . --platforms=android --force
 
       - name: Configure Android manifest for internet access
