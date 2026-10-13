@@ -44,7 +44,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() => _loading = true);
     try {
       final orders = await widget.service.getMyOrders();
-      if (mounted) setState(() => _orders = orders);
+      if (mounted) {
+        setState(() => _orders = orders);
+      }
     } catch (err) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -167,7 +169,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           );
                         }
                       } finally {
-                        if (mounted) setState(() => _creating = false);
+                        if (mounted) {
+                          setState(() => _creating = false);
+                        }
                       }
                     },
               child: _creating
