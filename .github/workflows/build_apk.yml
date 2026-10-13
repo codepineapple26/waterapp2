@@ -1,3 +1,4 @@
+# .github/workflows/build_apk.yml
 name: Flutter APK Online Compiler
 
 on:
@@ -49,7 +50,7 @@ jobs:
                   1,
               )
 
-          cleartext = 'android:usesCleartextTraffic="true"'
+          cleartext = 'android:usesCleartextTraffic=\"true\"'
           if cleartext not in xml:
               xml = xml.replace(
                   "<application",
