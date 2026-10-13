@@ -8,6 +8,9 @@ class PocketBaseService {
 
   factory PocketBaseService() => _instance;
 
+  // IMPORTANT:
+  // On Android emulator, use 10.0.2.2 instead of localhost
+  // On real device, use your computer's LAN IP (for example 192.168.1.10)
   static const String baseUrl = 'http://10.253.154.218:8090';
 
   final PocketBase _client = PocketBase(baseUrl);
