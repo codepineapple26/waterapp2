@@ -2,286 +2,253 @@ import 'package:flutter/material.dart';
 import 'package:pocketbase/pocketbase.dart';
 
 import '../services/pocketbase_service.dart';
-import 'order_detail_screen.dart';
 
-class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({
+class OrderDetailScreen extends StatefulWidget {
+  const OrderDetailScreen({
     super.key,
     required this.service,
-    required this.onLogout,
+    required this.orderId,
   });
 
   final PocketBaseService service;
-  final Future<void> Function() onLogout;
+  final String orderId;
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<OrderDetailScreen> createState() => _OrderDetailScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
-  Future<List<RecordModel>>? _ordersFuture;
+class _OrderDetailScreenState extends State<OrderDetailScreen> {
+  bool _loading = true;
+  bool _saving = false;
+  bool _deleting = false;
+  RecordModel? _order;
+
+  final _formKey = GlobalKey<FormState>();
+  final _addressController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _quantityController = TextEditingController();
+  final _notesController = TextEditingController();
+  String _status = 'New';
+
+  static const List<String> statuses = [
+    'New',
+    'Accepted',
+    'In Transit',
+    'Delivered',
+    'Cancelled',
+  ];
 
   @override
   void initState() {
     super.initState();
-    _loadOrders();
+    _loadOrder();
   }
 
-  void _loadOrders() {
-    setState(() {
-      _ordersFuture = widget.service.getMyOrders();
-    });
-  }
-
-  String _statusLabel(String? status) {
-    switch (status) {
-      case 'New':
-        return 'New';
-      case 'Processing':
-        return 'Processing';
-      case 'Out for delivery':
-        return 'Out for delivery';
-      case 'Delivered':
-        return 'Delivered';
-      case 'Cancelled':
-        return 'Cancelled';
-      default:
-        return status ?? 'Unknown';
-    }
-  }
-
-  Color _statusColor(String? status) {
-    switch (status) {
-      case 'New':
-        return Colors.orange;
-      case 'Processing':
-        return Colors.blue;
-      case 'Out for delivery':
-        return Colors.purple;
-      case 'Delivered':
-        return Colors.green;
-      case 'Cancelled':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  Future<void> _createDemoOrder() async {
+  Future<void> _loadOrder() async {
+    setState(() => _loading = true);
     try {
-      await widget.service.createDemoOrder(
-        address: '123 Market Street, Downtown',
-        phone: '+1 555 123 4567',
-        quantity: 2,
-        notes: 'Deliver after 6 pm',
+      final r = await widget.service.fetchOrderById(widget.orderId);
+      _order = r;
+      final data = r.data ?? <String, dynamic>{};
+      _addressController.text = data['address']?.toString() ?? '';
+      _phoneController.text = data['phone']?.toString() ?? '';
+      _quantityController.text = (data['quantity']?.toString() ?? '1');
+      _notesController.text = data['notes']?.toString() ?? '';
+      _status = data['status']?.toString() ?? 'New';
+    } catch (err) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load order: ${err.toString()}')));
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _formatCreated(RecordModel r) {
+    final createdRaw = (r.created ?? r.data?['created'])?.toString();
+    if (createdRaw == null) return '';
+    try {
+      final dt = DateTime.parse(createdRaw).toLocal();
+      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return createdRaw;
+    }
+  }
+
+  Future<void> _saveChanges() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+    try {
+      final updated = await widget.service.updateOrder(
+        widget.orderId,
+        address: _addressController.text.trim(),
+        phone: _phoneController.text.trim(),
+        quantity: int.parse(_quantityController.text.trim()),
+        notes: _notesController.text.trim(),
       );
-      _loadOrders();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Demo order created successfully.')),
-        );
+      // Update status if changed separately (to preserve audit)
+      if ((_order?.data?['status']?.toString() ?? '') != _status) {
+        await widget.service.updateOrderStatus(widget.orderId, _status);
       }
-    } catch (error) {
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Unable to create demo order: $error')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order updated')));
+        Navigator.of(context).pop(true); // signal changed
       }
+    } catch (err) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update: ${err.toString()}')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _deleteOrder() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete order?'),
+        content: const Text('This will permanently delete the order. Are you sure?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _deleting = true);
+    try {
+      await widget.service.deleteOrder(widget.orderId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order deleted')));
+        Navigator.of(context).pop(true); // signal changed
+      }
+    } catch (err) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete: ${err.toString()}')));
+      }
+    } finally {
+      if (mounted) setState(() => _deleting = false);
     }
   }
 
   @override
+  void dispose() {
+    _addressController.dispose();
+    _phoneController.dispose();
+    _quantityController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final userName = widget.service.currentUser?.data['name'] ?? 'Customer';
+    final order = _order;
+    final total = (order?.data?['total'] is num) ? (order!.data!['total'] as num).toDouble() : double.tryParse(order?.data?['total']?.toString() ?? '') ?? 0.0;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Orders dashboard'),
+        title: Text(order != null ? 'Order ${order.id}' : 'Order'),
         actions: [
           IconButton(
-            onPressed: () async {
-              await widget.onLogout();
-            },
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Logout',
+            icon: const Icon(Icons.delete),
+            onPressed: _deleting ? null : _deleteOrder,
+            tooltip: 'Delete',
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async => _loadOrders(),
-        child: FutureBuilder<List<RecordModel>>(
-          future: _ordersFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            if (snapshot.hasError) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.error_outline_rounded, size: 48),
-                      const SizedBox(height: 16),
-                      Text('Unable to load your orders', style: Theme.of(context).textTheme.titleLarge),
+                      Text('Order ID: ${order!.id}', style: const TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
-                      Text(snapshot.error.toString()),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: _loadOrders,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
+                      Text('Created: ${_formatCreated(order)}'),
+                      const SizedBox(height: 12),
+
+                      TextFormField(
+                        controller: _addressController,
+                        decoration: const InputDecoration(labelText: 'Address'),
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter address' : null,
+                      ),
+                      const SizedBox(height: 8),
+
+                      TextFormField(
+                        controller: _phoneController,
+                        decoration: const InputDecoration(labelText: 'Phone'),
+                        keyboardType: TextInputType.phone,
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter phone' : null,
+                      ),
+                      const SizedBox(height: 8),
+
+                      TextFormField(
+                        controller: _quantityController,
+                        decoration: const InputDecoration(labelText: 'Quantity'),
+                        keyboardType: TextInputType.number,
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return 'Enter quantity';
+                          final n = int.tryParse(v.trim());
+                          if (n == null || n <= 0) return 'Quantity must be > 0';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 8),
+
+                      TextFormField(
+                        controller: _notesController,
+                        decoration: const InputDecoration(labelText: 'Notes'),
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+                          const Text('Status:', style: TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 12),
+                          DropdownButton<String>(
+                            value: _status,
+                            items: statuses.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(() => _status = v);
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      Text('Total: \$${total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 18),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              icon: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
+                              label: const Text('Save changes'),
+                              onPressed: _saving ? null : _saveChanges,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Close'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-              );
-            }
-
-            final orders = snapshot.data ?? const [];
-
-            return ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 28,
-                          backgroundColor: Colors.blue.shade100,
-                          child: const Icon(Icons.person, color: Colors.blue),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Hello $userName',
-                                style: Theme.of(context).textTheme.titleLarge,
-                              ),
-                              const SizedBox(height: 4),
-                              const Text('Here is your delivery activity'),
-                            ],
-                          ),
-                        ),
-                        FilledButton.tonal(
-                          onPressed: _createDemoOrder,
-                          child: const Text('New order'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'My orders',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 12),
-                if (orders.isEmpty)
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        children: [
-                          const Icon(Icons.shopping_bag_outlined, size: 48, color: Colors.grey),
-                          const SizedBox(height: 12),
-                          const Text('No orders yet.'),
-                          const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed: _createDemoOrder,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Create demo order'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  ...orders.map((order) {
-                    final status = _statusLabel(order.data['status']);
-                    final quantity = order.data['quantity'] ?? 0;
-                    final total = order.data['total'] ?? 0.0;
-                    final createdAt = order.created;
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Card(
-                        child: InkWell(
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => OrderDetailScreen(order: order),
-                              ),
-                            );
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        'Order #${order.id.substring(0, 6)}',
-                                        style: Theme.of(context).textTheme.titleMedium,
-                                      ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: _statusColor(status).withAlpha(26),
-                                        borderRadius: BorderRadius.circular(999),
-                                      ),
-                                      child: Text(
-                                        status,
-                                        style: TextStyle(
-                                          color: _statusColor(status),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.local_drink_outlined, size: 18),
-                                    const SizedBox(width: 8),
-                                    Text('$quantity jugs'),
-                                    const Spacer(),
-                                    Text(
-                                      ' A3${total.toStringAsFixed(2)}',
-                                      style: Theme.of(context).textTheme.titleMedium,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.calendar_today_outlined, size: 18),
-                                    const SizedBox(width: 8),
-                                    Text(createdAt.toString()),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-              ],
-            );
-          },
-        ),
-      ),
+              ),
+            ),
     );
   }
 }
