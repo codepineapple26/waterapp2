@@ -109,9 +109,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -155,9 +153,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _deleting = false);
-      }
+      if (mounted) setState(() => _deleting = false);
     }
   }
 
