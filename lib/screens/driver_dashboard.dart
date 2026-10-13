@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:pocketbase/pocketbase.dart';
+
 import '../services/pocketbase_service.dart';
 import 'order_detail_screen.dart';
 
 class DriverDashboard extends StatefulWidget {
-  const DriverDashboard({super.key, required this.service, required this.onLogout});
+  const DriverDashboard({
+    super.key,
+    required this.service,
+    required this.onLogout,
+  });
+
   final PocketBaseService service;
   final VoidCallback onLogout;
 
@@ -15,7 +21,8 @@ class DriverDashboard extends StatefulWidget {
 class _DriverDashboardState extends State<DriverDashboard> {
   bool _loading = false;
   List<RecordModel> _orders = [];
-  String _filter = 'All'; // All, Unassigned, My Claims
+  String _filter = 'All';
+
   static const List<String> filters = ['All', 'Unassigned', 'My Claims'];
 
   @override
@@ -27,11 +34,13 @@ class _DriverDashboardState extends State<DriverDashboard> {
   Future<void> _loadOrders() async {
     setState(() => _loading = true);
     try {
-      final list = await widget.service.getAllOrders(); // server must allow driver listing
+      final list = await widget.service.getAllOrders();
       if (mounted) setState(() => _orders = list);
     } catch (err) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load orders: ${err.toString()}')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load orders: ${err.toString()}')),
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -41,56 +50,96 @@ class _DriverDashboardState extends State<DriverDashboard> {
   List<RecordModel> get _filtered {
     final me = widget.service.currentUser?.id;
     return _orders.where((r) {
-      final data = r.data ?? <String,dynamic>{};
+      final data = r.data ?? <String, dynamic>{};
       final driverId = data['driver_id']?.toString();
-      if (_filter == 'Unassigned') return driverId == null || driverId.isEmpty;
-      if (_filter == 'My Claims') return driverId == me;
+
+      if (_filter == 'Unassigned') {
+        return driverId == null || driverId.isEmpty;
+      }
+
+      if (_filter == 'My Claims') {
+        return driverId == me;
+      }
+
       return true;
     }).toList();
   }
 
   Widget _buildTile(RecordModel r) {
-    final d = r.data ?? <String,dynamic>{};
-    final addr = d['address']?.toString() ?? '-';
-    final qty = d['quantity']?.toString() ?? '-';
-    final status = d['status']?.toString() ?? '-';
-    final cust = d['customer_name']?.toString() ?? '-';
-    final driverId = d['driver_id']?.toString();
+    final data = r.data ?? <String, dynamic>{};
+    final address = data['address']?.toString() ?? '-';
+    final qty = data['quantity']?.toString() ?? '-';
+    final status = data['status']?.toString() ?? '-';
+    final customerName = data['customer_name']?.toString() ?? '-';
+    final driverId = data['driver_id']?.toString();
     final me = widget.service.currentUser?.id;
-    final claimedByMe = driverId != null && driverId == me;
 
     return ListTile(
-      title: Text('$cust • Qty: $qty'),
-      subtitle: Text(addr),
-      trailing: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Text(status), if (claimedByMe) const Icon(Icons.check_circle, color: Colors.green)]),
+      leading: CircleAvatar(
+        backgroundColor: status == 'Accepted' || status == 'In Transit'
+            ? Colors.orange
+            : Colors.blueGrey,
+        child: Text(status.isNotEmpty ? status[0].toUpperCase() : '?'),
+      ),
+      title: Text('$customerName • Qty: $qty'),
+      subtitle: Text(address),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(status),
+          if (driverId == me) const Icon(Icons.check_circle, color: Colors.green),
+        ],
+      ),
       onTap: () async {
         final changed = await Navigator.of(context).push<bool?>(
-          MaterialPageRoute(builder: (_) => OrderDetailScreen(service: widget.service, orderId: r.id)),
+          MaterialPageRoute(
+            builder: (_) => OrderDetailScreen(
+              service: widget.service,
+              orderId: r.id,
+            ),
+          ),
         );
-        if (changed == true) await _loadOrders();
+        if (changed == true) {
+          await _loadOrders();
+        }
       },
       onLongPress: () async {
-        // quick claim/unclaim action
         if (driverId == null || driverId.isEmpty) {
-          // claim
           try {
             await widget.service.claimOrder(r.id);
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order claimed')));
-            await _loadOrders();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Order claimed')),
+              );
+              await _loadOrders();
+            }
           } catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Claim failed: ${e.toString()}')));
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Claim failed: ${e.toString()}')),
+              );
+            }
           }
         } else if (driverId == me) {
-          // unclaim
           try {
             await widget.service.unclaimOrder(r.id);
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order unclaimed')));
-            await _loadOrders();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Order unclaimed')),
+              );
+              await _loadOrders();
+            }
           } catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Unclaim failed: ${e.toString()}')));
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Unclaim failed: ${e.toString()}')),
+              );
+            }
           }
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order already claimed by another driver')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Order already assigned to another driver')),
+          );
         }
       },
     );
@@ -103,32 +152,56 @@ class _DriverDashboardState extends State<DriverDashboard> {
       appBar: AppBar(
         title: const Text('Driver Dashboard'),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadOrders),
-          IconButton(icon: const Icon(Icons.logout), onPressed: widget.onLogout),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadOrders,
+            tooltip: 'Refresh',
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: widget.onLogout,
+            tooltip: 'Logout',
+          ),
         ],
       ),
       body: SafeArea(
         child: Column(
           children: [
-            Padding(padding: const EdgeInsets.all(8), child: Row(children: [
-              const Text('Filter:'),
-              const SizedBox(width: 12),
-              DropdownButton<String>(value: _filter, items: filters.map((f) => DropdownMenuItem(value: f, child: Text(f))).toList(), onChanged: (v) => v == null ? null : setState(() => _filter = v)),
-            ])),
-            Expanded(
-              child: _loading ? const Center(child: CircularProgressIndicator()) : ListView.separated(
-                itemCount: list.length,
-                itemBuilder: (_, i) => _buildTile(list[i]),
-                separatorBuilder: (_, __) => const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                children: [
+                  const Text('Filter:'),
+                  const SizedBox(width: 12),
+                  DropdownButton<String>(
+                    value: _filter,
+                    items: filters
+                        .map((f) => DropdownMenuItem(value: f, child: Text(f)))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _filter = v);
+                    },
+                  ),
+                ],
               ),
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView.separated(
+                      itemCount: list.length,
+                      itemBuilder: (_, index) => _buildTile(list[index]),
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                    ),
             ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _loadOrders,
-        icon: const Icon(Icons.sync),
         label: const Text('Refresh'),
+        icon: const Icon(Icons.sync),
       ),
     );
   }
