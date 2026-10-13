@@ -10,7 +10,6 @@ class PocketBaseService {
   final PocketBase _client = PocketBase(baseUrl);
 
   PocketBase get client => _client;
-
   bool get isLoggedIn => _client.authStore.isValid;
   RecordModel? get currentUser => _client.authStore.model;
 
@@ -39,7 +38,9 @@ class PocketBaseService {
 
   Future<List<RecordModel>> getMyOrders() async {
     final userId = currentUser?.id;
-    if (userId == null) return const [];
+    if (userId == null) {
+      return const [];
+    }
 
     final records = await _client.collection('orders').getFullList(
       filter: 'user_id = "$userId"',
