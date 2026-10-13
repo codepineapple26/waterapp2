@@ -27,12 +27,11 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Rebuild Android directory structure
-        run: |
-          if [ ! -d "android/app/src/main" ]; then
-            flutter create . --platforms=android --force
-          fi
+      - name: Ensure Android project exists
+        run: flutter create . --platforms=android --force
 
+      - name: Configure Android manifest for internet access
+        run: |
           python3 - <<'PY'
           from pathlib import Path
 
@@ -50,7 +49,7 @@ jobs:
                   1,
               )
 
-          cleartext = 'android:usesCleartextTraffic=\"true\"'
+          cleartext = 'android:usesCleartextTraffic="true"'
           if cleartext not in xml:
               xml = xml.replace(
                   "<application",
