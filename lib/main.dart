@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pocketbase/pocketbase.dart';
-// Using the exact application folder package identifier mapping
-import 'package:waterapp2/pocketbase_service.dart'; 
+// Aligned carefully to your nested lib/services/ subfolder path layout
+import 'package:waterapp2/services/pocketbase_service.dart'; 
 import 'package:waterapp2/create_order_screen.dart'; 
 
 void main() {
