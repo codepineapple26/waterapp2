@@ -1,28 +1,25 @@
 pluginManagement {
     def flutterSdkPath = {
         def properties = new Properties()
-        def localPropertiesFile = file("local.properties")
-        if (localPropertiesFile.exists()) {
-            localPropertiesFile.withInputStream { properties.load(it) }
-        }
-
-        // Prefer local.properties, then environment variables (set in CI by Flutter action).
-        def flutterSdk = properties.getProperty("flutter.sdk")
-        if (flutterSdk == null || flutterSdk.trim().length() == 0) {
-            flutterSdk = System.getenv("FLUTTER_ROOT") ?: System.getenv("FLUTTER_HOME")
-        }
-
-        if (flutterSdk == null || flutterSdk.trim().length() == 0) {
-            throw new GradleException(
-                "flutter.sdk not set in local.properties and FLUTTER_ROOT/FLUTTER_HOME are not set.\n" +
-                "In CI, ensure the Flutter action sets FLUTTER_ROOT (e.g., subosito/flutter-action). " +
-                "Locally, run `flutter` to generate local.properties or add `flutter.sdk=<path>` to local.properties."
-            )
-        }
-        return flutterSdk
+        file("../local.properties").withInputStream { properties.load(it) }
+        def flutterSdkPath = properties.getProperty("flutter.sdk")
+        assert flutterSdkPath != null : "flutter.sdk not set in local.properties"
+        return flutterSdkPath
     }()
 
-    includeBuild("${flutterSdkPath}/packages/flutter_tools/gradle")
+    includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+    id "com.android.application" version "8.3.2" apply false
+    id "org.jetbrains.kotlin.android" version "1.9.22" apply false
 }
 
 include ":app"
