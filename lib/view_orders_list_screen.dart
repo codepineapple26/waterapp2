@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:pocketbase/pocketbase.dart';
 import 'package:waterapp2/services/pocketbase_service.dart';
 
@@ -6,9 +7,13 @@ class ViewOrdersListScreen extends StatefulWidget {
   const ViewOrdersListScreen({
     super.key,
     this.onReorder,
+    this.isActive = true,
   });
 
   final ValueChanged<Map<String, dynamic>>? onReorder;
+
+  // Set this from HomeScreen so orders refresh when this tab is selected.
+  final bool isActive;
 
   @override
   State<ViewOrdersListScreen> createState() => _ViewOrdersListScreenState();
@@ -21,6 +26,15 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
   void initState() {
     super.initState();
     _ordersFuture = _loadOrders();
+  }
+
+  @override
+  void didUpdateWidget(covariant ViewOrdersListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (!oldWidget.isActive && widget.isActive) {
+      _refreshOrders();
+    }
   }
 
   Future<List<RecordModel>> _loadOrders() async {
@@ -36,10 +50,35 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
         );
   }
 
+  Future<void> _refreshOrders() async {
+    final future = _loadOrders();
+
+    if (mounted) {
+      setState(() => _ordersFuture = future);
+    }
+
+    // The FutureBuilder displays any error from the future.
+    try {
+      await future;
+    } catch (_) {
+      // Error is displayed by FutureBuilder.
+    }
+  }
+
   String _formatTotal(dynamic value) {
     final total = value is num ? value : num.tryParse(value?.toString() ?? '');
-
     return total == null ? '—' : '₹${total.toStringAsFixed(2)}';
+  }
+
+  String _formatDate(dynamic value) {
+    if (value == null || value.toString().isEmpty) return '—';
+
+    try {
+      return DateFormat('MMM d, y • h:mm a')
+          .format(DateTime.parse(value.toString()).toLocal());
+    } catch (_) {
+      return value.toString();
+    }
   }
 
   Future<void> _openOrderDetails(RecordModel order) async {
@@ -51,7 +90,7 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
 
     if (!mounted) return;
 
-    _refreshOrders();
+    await _refreshOrders();
 
     if (result?['action'] == 'reorder') {
       final rawDraft = result?['draft'];
@@ -60,12 +99,6 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
         widget.onReorder?.call(Map<String, dynamic>.from(rawDraft));
       }
     }
-  }
-
-  void _refreshOrders() {
-    setState(() {
-      _ordersFuture = _loadOrders();
-    });
   }
 
   @override
@@ -77,7 +110,7 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh orders',
-            onPressed: _refreshOrders,
+            onPressed: () => _refreshOrders(),
           ),
         ],
       ),
@@ -89,10 +122,19 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
           }
 
           if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text('Error loading orders: ${snapshot.error}'),
+            return RefreshIndicator(
+              onRefresh: _refreshOrders,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  const SizedBox(height: 160),
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text('Error loading orders: ${snapshot.error}'),
+                    ),
+                  ),
+                ],
               ),
             );
           }
@@ -100,54 +142,69 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
           final orders = snapshot.data ?? const <RecordModel>[];
 
           if (orders.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'No orders yet.',
-                  style: TextStyle(fontSize: 18),
-                ),
+            return RefreshIndicator(
+              onRefresh: _refreshOrders,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 180),
+                  Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'No orders yet.',
+                        style: TextStyle(fontSize: 18),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: orders.length,
-            itemBuilder: (context, index) {
-              final order = orders[index];
-              final status = order.getStringValue('status').trim();
-              final quantity = order.getIntValue('quantity');
-              final address = order.getStringValue('address');
-              final total = order.data['total'];
+          return RefreshIndicator(
+            onRefresh: _refreshOrders,
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              itemCount: orders.length,
+              itemBuilder: (context, index) {
+                final order = orders[index];
+                final status = order.getStringValue('status').trim();
+                final quantity = order.getIntValue('quantity');
+                final address = order.getStringValue('address');
+                final total = order.data['total'];
+                final created = order.data['created'];
 
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.water_drop,
-                    color: Colors.blue,
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    leading: const Icon(
+                      Icons.water_drop,
+                      color: Colors.blue,
+                    ),
+                    title: Text('Water quantity: $quantity'),
+                    subtitle: Text(
+                      'Address: $address\n'
+                      'Status: ${status.isNotEmpty ? status : 'New'}\n'
+                      '${_formatDate(created)}',
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _formatTotal(total),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const Icon(Icons.chevron_right),
+                      ],
+                    ),
+                    isThreeLine: true,
+                    onTap: () => _openOrderDetails(order),
                   ),
-                  title: Text('Water quantity: $quantity'),
-                  subtitle: Text(
-                    'Address: $address\n'
-                    'Status: ${status.isNotEmpty ? status : 'New'}',
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _formatTotal(total),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const Icon(Icons.chevron_right),
-                    ],
-                  ),
-                  isThreeLine: true,
-                  onTap: () => _openOrderDetails(order),
-                ),
-              );
-            },
+                );
+              },
+            ),
           );
         },
       ),
@@ -178,6 +235,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   late String _status;
   bool _saving = false;
 
+  bool get _isDriver =>
+      pb.authStore.model?.getStringValue('role') == 'driver';
+
   @override
   void initState() {
     super.initState();
@@ -196,18 +256,18 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         body: {'status': newStatus},
       );
 
-      if (mounted) {
-        setState(() => _status = newStatus);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order status updated')),
-        );
-      }
+      if (!mounted) return;
+
+      setState(() => _status = newStatus);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order status updated')),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update status: $e')),
-        );
-      }
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update status: $e')),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -233,6 +293,17 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     return value.toString();
   }
 
+  String _formatDate(dynamic value) {
+    if (value == null || value.toString().isEmpty) return '—';
+
+    try {
+      return DateFormat('MMM d, y • h:mm a')
+          .format(DateTime.parse(value.toString()).toLocal());
+    } catch (_) {
+      return value.toString();
+    }
+  }
+
   String _formatTotal(dynamic value) {
     final total = value is num ? value : num.tryParse(value?.toString() ?? '');
     return total == null ? '—' : '₹${total.toStringAsFixed(2)}';
@@ -245,41 +316,50 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final data = widget.order.data;
-    final isDriver =
-        pb.authStore.model?.getStringValue('role') == 'driver';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Order Details')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // The PocketBase record ID remains available in code for updates,
-          // but is intentionally not shown in the UI.
+          _detail('Customer', _value(data['customer_name'])),
+          _detail('Phone', _value(data['phone'])),
           _detail('Quantity', _value(data['quantity'])),
           _detail('Address', _value(data['address'])),
+          _detail('Notes', _value(data['notes'])),
           _detail('Status', _status),
-          DropdownButtonFormField<String>(
-            value: _status,
-            decoration: const InputDecoration(labelText: 'Update status'),
-            items: _statuses
-                .map(
-                  (value) => DropdownMenuItem(
-                    value: value,
-                    child: Text(value),
-                  ),
-                )
-                .toList(),
-            onChanged: _saving
-                ? null
-                : (value) {
-                    if (value != null && value != _status) {
-                      _updateStatus(value);
-                    }
-                  },
-          ),
-          if (_saving) const LinearProgressIndicator(),
+          _detail('Order placed', _formatDate(data['created'])),
           _detail('Total', _formatTotal(data['total'])),
-          if (!isDriver) ...[
+
+          // The record ID remains available as widget.order.id for updates,
+          // but is intentionally not shown in the UI.
+          if (_isDriver) ...[
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: _status,
+              decoration: const InputDecoration(
+                labelText: 'Update status',
+              ),
+              items: _statuses
+                  .map(
+                    (value) => DropdownMenuItem(
+                      value: value,
+                      child: Text(value),
+                    ),
+                  )
+                  .toList(),
+              onChanged: _saving
+                  ? null
+                  : (value) {
+                      if (value != null && value != _status) {
+                        _updateStatus(value);
+                      }
+                    },
+            ),
+            if (_saving) const LinearProgressIndicator(),
+          ],
+
+          if (!_isDriver) ...[
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
