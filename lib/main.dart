@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pocketbase/pocketbase.dart';
-// Verified absolute package imports targeting your exact project workspace
-import 'package:waterapp2/services/pocketbase_service.dart'; 
-import 'package:waterapp2/create_order_screen.dart'; 
+import 'package:waterapp2/services/pocketbase_service.dart';
+import 'package:waterapp2/create_order_screen.dart';
 import 'package:waterapp2/view_orders_list_screen.dart';
 
 void main() {
@@ -21,13 +20,11 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      // Persistent login token validation check mapping
       home: pb.authStore.isValid ? const HomeScreen() : const LoginScreen(),
     );
   }
 }
 
-// --- RESTORED FEATURE: The Master App Dashboard ---
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -38,10 +35,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
 
-  // The multi-view layout panel restoring your "Place Order" and "View Orders" features side-by-side
   final List<Widget> _screens = [
-    CreateOrderScreen(allowSubmit: true), // View Index 0: Places editable orders
-    const ViewOrdersListScreen(), // View Index 1: Tracks past delivery history cards
+    CreateOrderScreen(allowSubmit: true),
+    const ViewOrdersListScreen(),
   ];
 
   @override
@@ -51,12 +47,11 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _currentIndex,
         children: _screens,
       ),
-      // Fully enabled interactive navigation bar footer item
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (int index) {
           setState(() {
-            _currentIndex = index; // Switches views flawlessly without disabling button nodes
+            _currentIndex = index;
           });
         },
         items: const [
@@ -174,16 +169,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       );
                     },
                     child: const Text('Create an account'),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: () {
-                      // Allow viewing the place-order screen without submitting
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => CreateOrderScreen(allowSubmit: false)),
-                      );
-                    },
-                    child: const Text('View Place Order'),
                   ),
                 ],
               ),
