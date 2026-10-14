@@ -39,13 +39,15 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
     return total == null ? '—' : '₹${total.toStringAsFixed(2)}';
   }
 
-  void _openOrderDetails(RecordModel order) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => OrderDetailsScreen(order: order),
-      ),
-    );
-  }
+  Future<void> _openOrderDetails(RecordModel order) async {
+  await Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => OrderDetailsScreen(order: order),
+    ),
+  );
+
+  if (mounted) _refreshOrders();
+}
 
   void _refreshOrders() {
     setState(() {
