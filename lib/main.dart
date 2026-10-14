@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:pocketbase/pocketbase.dart';
-// 1. CRITICAL: Make sure these imports match your exact project folder paths
-import 'package:waterapp2/services/pocketbase_service.dart'; 
-import 'package:waterapp2/screens/create_order_screen.dart'; // Change to where you saved the order screen
+// Unified root directory imports matching your exact repository structure
+import 'pocketbase_service.dart'; 
+import 'create_order_screen.dart'; 
 
 void main() {
   runApp(const MyApp());
@@ -20,7 +20,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      // 2. Check if the user has an active, valid login token stored in local memory cache
+      // Automatically check local memory cache for persistent user token status
       home: pb.authStore.isValid ? const CreateOrderScreen() : const LoginScreen(),
     );
   }
@@ -51,7 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // 3. Request authentication from your PocketBase server instance
+      // Connect to the PocketBase backend instance specified in your service file
       final authData = await pb.collection('users').authWithPassword(
         _emailController.text.trim(),
         _passwordController.text.trim(),
@@ -59,7 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (authData.token.isNotEmpty) {
         if (!mounted) return;
-        // 4. If successful, advance directly to the editable ordering layout screen
+        // Swap screens to prevent user from backing into empty login forms
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const CreateOrderScreen()),
         );
