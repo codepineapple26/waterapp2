@@ -12,7 +12,7 @@ class ViewOrdersListScreen extends StatefulWidget {
 
   final ValueChanged<Map<String, dynamic>>? onReorder;
 
-  // Set this from HomeScreen so orders refresh when this tab is selected.
+  // HomeScreen must update this when the selected tab changes.
   final bool isActive;
 
   @override
@@ -57,11 +57,11 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
       setState(() => _ordersFuture = future);
     }
 
-    // The FutureBuilder displays any error from the future.
+    // FutureBuilder displays any loading error.
     try {
       await future;
     } catch (_) {
-      // Error is displayed by FutureBuilder.
+      // The error is handled in the FutureBuilder.
     }
   }
 
@@ -93,10 +93,10 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
     await _refreshOrders();
 
     if (result?['action'] == 'reorder') {
-      final rawDraft = result?['draft'];
+      final draft = result?['draft'];
 
-      if (rawDraft is Map) {
-        widget.onReorder?.call(Map<String, dynamic>.from(rawDraft));
+      if (draft is Map) {
+        widget.onReorder?.call(Map<String, dynamic>.from(draft));
       }
     }
   }
@@ -310,7 +310,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   }
 
   Widget _detail(String label, String value) {
-    return ListTile(title: Text(label), subtitle: Text(value));
+    return ListTile(
+      title: Text(label),
+      subtitle: Text(value),
+    );
   }
 
   @override
@@ -331,8 +334,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           _detail('Order placed', _formatDate(data['created'])),
           _detail('Total', _formatTotal(data['total'])),
 
-          // The record ID remains available as widget.order.id for updates,
-          // but is intentionally not shown in the UI.
+          // widget.order.id remains available for PocketBase updates,
+          // but is intentionally not displayed.
           if (_isDriver) ...[
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
@@ -342,7 +345,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               ),
               items: _statuses
                   .map(
-                    (value) => DropdownMenuItem(
+                    (value) => DropdownMenuItem<String>(
                       value: value,
                       child: Text(value),
                     ),
