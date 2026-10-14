@@ -10,8 +10,17 @@ class ViewOrdersListScreen extends StatefulWidget {
 }
 
 class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
+  late Future<List<RecordModel>> _ordersFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _ordersFuture = _loadOrders();
+  }
+
   Future<List<RecordModel>> _loadOrders() async {
     final userId = pb.authStore.model?.id;
+
     if (userId == null || userId.isEmpty) {
       return const [];
     }
@@ -23,7 +32,10 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
   }
 
   String _formatTotal(dynamic value) {
-    final total = value is num ? value : num.tryParse(value?.toString() ?? '');
+    final total = value is num
+        ? value
+        : num.tryParse(value?.toString() ?? '');
+
     return total == null ? '—' : '₹${total.toStringAsFixed(2)}';
   }
 
@@ -35,12 +47,27 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
     );
   }
 
+  void _refreshOrders() {
+    setState(() {
+      _ordersFuture = _loadOrders();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('My Orders')),
+      appBar: AppBar(
+        title: const Text('My Orders'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh orders',
+            onPressed: _refreshOrders,
+          ),
+        ],
+      ),
       body: FutureBuilder<List<RecordModel>>(
-        future: _loadOrders(),
+        future: _ordersFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -129,7 +156,10 @@ class OrderDetailsScreen extends StatelessWidget {
   }
 
   String _formatTotal(dynamic value) {
-    final total = value is num ? value : num.tryParse(value?.toString() ?? '');
+    final total = value is num
+        ? value
+        : num.tryParse(value?.toString() ?? '');
+
     return total == null ? '—' : '₹${total.toStringAsFixed(2)}';
   }
 
