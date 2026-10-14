@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:pocketbase/pocketbase.dart';
 import 'package:waterapp2/services/pocketbase_service.dart';
+import 'package:pocketbase/pocketbase.dart';
 
 class CreateOrderScreen extends StatefulWidget {
   final bool allowSubmit;
@@ -27,8 +27,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 
   void _loadBackendUserData() {
-    if (pb.authStore.isValid && pb.authStore.model != null) {
-      final userModel = pb.authStore.model as RecordModel;
+    if (PocketBaseService().isLoggedIn && PocketBaseService().currentUser != null) {
+      final userModel = PocketBaseService().currentUser!;
 
       final backendName = userModel.getStringValue('name');
       final backendPhone = userModel.getStringValue('phone');
@@ -45,16 +45,20 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   Future<void> _submitOrder() async {
     if (!widget.allowSubmit) return;
 
-    if (!pb.authStore.isValid || pb.authStore.model == null) {
+    if (!PocketBaseService().isLoggedIn || PocketBaseService().currentUser == null) {
       setState(() => _statusMessage = 'You must be signed in to place an order.');
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in required')));
       return;
     }
 
-    if (_addressController.text.trim().isEmpty) {
+    final address = _addressController.text.trim();
+    final phone = _phoneController.text.trim();
+
+    if (address.isEmpty) {
       setState(() => _statusMessage = 'Delivery address cannot be blank.');
       return;
     }
-    if (_phoneController.text.trim().isEmpty) {
+    if (phone.isEmpty) {
       setState(() => _statusMessage = 'Contact phone number cannot be blank.');
       return;
     }
@@ -67,21 +71,30 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     try {
       final quantity = int.tryParse(_quantityController.text) ?? 1;
 
-      // Use the service layer so logic like total calculation and user checks live in one place.
+      // Use the service layer to create the order (handles total & user checks)
       final record = await PocketBaseService().createDemoOrder(
-        address: _addressController.text.trim(),
-        phone: _phoneController.text.trim(),
+        address: address,
+        phone: phone,
         quantity: quantity,
         notes: _notesController.text.trim(),
       );
 
-      setState(() => _statusMessage = 'Order placed successfully! (id: ${record.id})');
+      final msg = 'Order placed successfully! (id: ${record.id})';
+      setState(() => _statusMessage = msg);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+
+      // Reset form
       _quantityController.text = '1';
       _notesController.clear();
+
+      // Return true so callers (like the orders list) can refresh
+      if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
-      setState(() => _statusMessage = 'Submission failed: ${error.toString()}');
+      final msg = 'Submission failed: ${error.toString()}';
+      setState(() => _statusMessage = msg);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -104,7 +117,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () {
-              pb.authStore.clear();
+              PocketBaseService().logout();
               Navigator.of(context).pushReplacementNamed('/');
             },
           ),
@@ -133,7 +146,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             TextField(
               controller: _nameController,
               decoration: const InputDecoration(labelText: 'Customer Name', border: OutlineInputBorder()),
-              readOnly: !widget.allowSubmit && !pb.authStore.isValid,
+              readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
             const SizedBox(height: 16),
             TextField(
@@ -144,7 +157,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 helperText: 'Loaded from profile. Edit if different for this specific order.',
               ),
               keyboardType: TextInputType.phone,
-              readOnly: !widget.allowSubmit && !pb.authStore.isValid,
+              readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
             const SizedBox(height: 16),
             TextField(
@@ -155,21 +168,21 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 helperText: 'Loaded from profile. Edit if different for this specific order.',
               ),
               maxLines: 2,
-              readOnly: !widget.allowSubmit && !pb.authStore.isValid,
+              readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _quantityController,
               decoration: const InputDecoration(labelText: 'Quantity', border: OutlineInputBorder()),
               keyboardType: TextInputType.number,
-              readOnly: !widget.allowSubmit && !pb.authStore.isValid,
+              readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _notesController,
               decoration: const InputDecoration(labelText: 'Special Delivery Instructions (Optional)', border: OutlineInputBorder()),
               maxLines: 2,
-              readOnly: !widget.allowSubmit && !pb.authStore.isValid,
+              readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
             const SizedBox(height: 24),
             _isLoading
