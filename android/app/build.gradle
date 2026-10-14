@@ -6,13 +6,13 @@ plugins {
 
 android {
     namespace "com.example.waterapp2"
-    compileSdkVersion 34
+    compileSdk = 34
 
     defaultConfig {
-        applicationId "com.example.waterapp2"
-        minSdkVersion 21
-        targetSdkVersion 34
-        versionCode 1
-        versionName "1.0.0"
+        applicationId = "com.example.waterapp2"
+        minSdk = 21
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0.0"
     }
 }
