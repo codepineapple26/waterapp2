@@ -35,7 +35,7 @@ flutter run
 
 ## Notes
 
-- The app currently uses the PocketBase server URL `http://10.253.154.218:8090`.
+- The app currently uses the PocketBase server URL ``.
 - If your emulator/device uses a different host, update the constant in `lib/services/pocketbase_service.dart`.
 - For Android emulator, use `10.0.2.2` instead of `localhost`.
 
