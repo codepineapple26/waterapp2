@@ -87,12 +87,16 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _quantityController.text = '1';
       _notesController.clear();
 
-      // Return true so callers (like the orders list) can refresh
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (error) {
+      // DO NOT pop the route here — CreateOrderScreen is often part of the home tab.
+      // Previously popping caused the app to navigate away/blank the UI. Instead,
+      // keep the user on the Place Order screen and rely on the orders list to refresh.
+    } catch (error, st) {
       final msg = 'Submission failed: ${error.toString()}';
       setState(() => _statusMessage = msg);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      // Log stacktrace to console for debugging
+      // ignore: avoid_print
+      print('Order submit error: $error\n$st');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
