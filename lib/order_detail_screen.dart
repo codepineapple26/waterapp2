@@ -218,8 +218,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 const SizedBox(height: 12),
                 _buildRow('Created', created),
                 _buildRow('Updated', updated),
-                const SizedBox(height: 20),
-                if (widget.onReorder != null) ...[
+                 const SizedBox(height: 20),
+                 OrderStatusTimeline(orderId: id),
+                 const SizedBox(height: 20),
+                 if (widget.onReorder != null) ...[
+
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
