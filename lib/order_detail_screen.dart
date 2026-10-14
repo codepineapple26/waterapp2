@@ -24,7 +24,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   bool _isSubmittingCancellation = false;
   bool _cancellationSent = false;
 
-
   final List<String> _statuses = [
     'New',
     'Accepted',
@@ -65,6 +64,59 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     } finally {
       if (mounted) {
         setState(() => _isUpdatingStatus = false);
+      }
+    }
+  }
+
+  Future<void> _requestCancellation(RecordModel order) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Request cancellation?'),
+        content: const Text(
+          'Your cancellation request will be sent to the delivery team.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep order'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Send request'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isSubmittingCancellation = true);
+
+    try {
+      await pb.collection('cancellation_requests').create(
+        body: {
+          'order': order.id,
+          'reason': '',
+          'request_status': 'pending',
+        },
+      );
+
+      if (!mounted) return;
+
+      setState(() => _cancellationSent = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cancellation request sent')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not send request: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmittingCancellation = false);
       }
     }
   }
@@ -161,7 +213,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
           final order = snapshot.data!;
 
-          // Keep the PocketBase ID for updates; do not display it in the UI.
+          // Keep the PocketBase ID for updates; don't display it.
           final id = order.id;
           final customerName = order.getStringValue('customer_name');
           final phone = order.getStringValue('phone');
@@ -221,11 +273,33 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 const SizedBox(height: 12),
                 _buildRow('Created', created),
                 _buildRow('Updated', updated),
-                 const SizedBox(height: 20),
-                 OrderStatusTimeline(orderId: id),
-                 const SizedBox(height: 20),
-                 if (widget.onReorder != null) ...[
+                const SizedBox(height: 20),
+                OrderStatusTimeline(orderId: id),
+                const SizedBox(height: 20),
 
+                // Only show this to customers, and not for delivered orders.
+                if (widget.onReorder != null &&
+                    status.toLowerCase() != 'delivered') ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed:
+                          _isSubmittingCancellation || _cancellationSent
+                              ? null
+                              : () => _requestCancellation(order),
+                      child: Text(
+                        _isSubmittingCancellation
+                            ? 'Sending request...'
+                            : _cancellationSent
+                                ? 'Cancellation requested'
+                                : 'Request cancellation',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                if (widget.onReorder != null) ...[
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -236,6 +310,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   ),
                   const SizedBox(height: 12),
                 ],
+
                 ElevatedButton(
                   onPressed: () {
                     setState(() {
