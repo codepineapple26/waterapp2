@@ -1,4 +1,3 @@
-# .github/workflows/build_apk.yml
 name: Flutter APK Online Compiler
 
 on:
@@ -27,48 +26,6 @@ jobs:
           flutter-version: "3.47.7"
           channel: stable
           cache: false
-
-      - name: Ensure Android project scaffold exists
-        run: |
-          if [ ! -d android ]; then
-            flutter create --platforms=android .
-          fi
-
-      - name: Verify Android scaffold
-        run: |
-          test -f android/app/src/main/AndroidManifest.xml
-          test -f android/app/build.gradle || test -f android/app/build.gradle.kts
-
-      - name: Configure Android manifest for internet access
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          manifest_path = Path("android/app/src/main/AndroidManifest.xml")
-          if not manifest_path.exists():
-              raise FileNotFoundError(f"AndroidManifest.xml not found: {manifest_path}")
-
-          xml = manifest_path.read_text()
-
-          permission = '<uses-permission android:name="android.permission.INTERNET" />'
-          if permission not in xml:
-              xml = xml.replace(
-                  "<application",
-                  f"    {permission}\n    <application",
-                  1,
-              )
-
-          cleartext = 'android:usesCleartextTraffic="true"'
-          if cleartext not in xml:
-              xml = xml.replace(
-                  "<application",
-                  f'<application {cleartext}',
-                  1,
-              )
-
-          manifest_path.write_text(xml)
-          print("AndroidManifest.xml updated for INTERNET + cleartext traffic")
-          PY
 
       - name: Install project dependencies
         run: flutter pub get
