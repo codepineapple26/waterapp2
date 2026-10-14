@@ -21,6 +21,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   late Future<RecordModel> _orderFuture;
 
   bool _isUpdatingStatus = false;
+  bool _isSubmittingCancellation = false;
+  bool _cancellationSent = false;
+
 
   final List<String> _statuses = [
     'New',
