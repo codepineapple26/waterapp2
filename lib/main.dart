@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:pocketbase/pocketbase.dart';
 import 'package:waterapp2/services/pocketbase_service.dart';
 import 'package:waterapp2/create_order_screen.dart';
 import 'package:waterapp2/view_orders_list_screen.dart';
@@ -20,7 +19,9 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: pb.authStore.isValid ? const HomeScreen() : const LoginScreen(),
+      home: pb.authStore.isValid
+          ? const HomeScreen()
+          : const LoginScreen(),
     );
   }
 }
@@ -33,6 +34,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // Customers land on View Orders. Drivers have only the View Orders tab.
   int _currentIndex = 1;
   int _ordersVersion = 0;
   int _formVersion = 0;
@@ -54,48 +56,62 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final orderList = ViewOrdersListScreen(
+      key: ValueKey('orders-$_ordersVersion'),
+      onReorder: _handleReorder,
+    );
+
+    final pages = _isDriver
+        ? <Widget>[orderList]
+        : <Widget>[
+            CreateOrderScreen(
+              key: ValueKey('create-order-$_formVersion'),
+              allowSubmit: true,
+              initialValues: _reorderDraft,
+            ),
+            orderList,
+          ];
+
     return Scaffold(
       body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          CreateOrderScreen(
-            key: ValueKey('create-order-$_formVersion'),
-            allowSubmit: !_isDriver,
-            initialValues: _reorderDraft,
-          ),
-          ViewOrdersListScreen(
-            key: ValueKey(_ordersVersion),
-            onReorder: _handleReorder,
-          ),
-        ],
+        index: _isDriver ? 0 : _currentIndex,
+        children: pages,
       ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
+        currentIndex: _isDriver ? 0 : _currentIndex,
         onTap: (index) {
+          if (_isDriver) return;
+
           setState(() {
             _currentIndex = index;
+
+            // Recreate the list when the customer switches to View Orders.
             if (index == 1) {
               _ordersVersion++;
             }
           });
         },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_shopping_cart),
-            label: 'Place Order',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt),
-            label: 'View Orders',
-          ),
-        ],
+        items: _isDriver
+            ? const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.list_alt),
+                  label: 'View Orders',
+                ),
+              ]
+            : const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.add_shopping_cart),
+                  label: 'Place Order',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.list_alt),
+                  label: 'View Orders',
+                ),
+              ],
       ),
     );
   }
 }
-
-
-
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -107,12 +123,16 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+
   bool _isLoading = false;
   String _errorMessage = '';
 
   Future<void> _handleLogin() async {
-    if (_emailController.text.trim().isEmpty || _passwordController.text.trim().isEmpty) {
-      setState(() => _errorMessage = 'Please enter your email and password.');
+    if (_emailController.text.trim().isEmpty ||
+        _passwordController.text.trim().isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter your email and password.';
+      });
       return;
     }
 
@@ -123,22 +143,32 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final authData = await pb.collection('users').authWithPassword(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-      );
+            _emailController.text.trim(),
+            _passwordController.text.trim(),
+          );
 
-      if (authData.token.isNotEmpty) {
-        if (!mounted) return;
-        debugPrint('Login successful. token present.');
+      if (authData.token.isNotEmpty && mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          MaterialPageRoute(
+            builder: (context) => const HomeScreen(),
+          ),
         );
       }
     } catch (e, st) {
       debugPrint('Login error: $e\n$st');
-      setState(() => _errorMessage = 'Invalid email/password or server connection dropped.');
+
+      if (mounted) {
+        setState(() {
+          _errorMessage =
+              'Invalid email/password or server connection dropped.';
+        });
+      }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -154,28 +184,41 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.water_drop, size: 80, color: Colors.blue),
+              const Icon(
+                Icons.water_drop,
+                size: 80,
+                color: Colors.blue,
+              ),
               const SizedBox(height: 16),
               const Text(
                 'Water Delivery Login',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 32),
               TextField(
                 controller: _emailController,
-                decoration: const InputDecoration(labelText: 'Email Address', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Email Address',
+                  border: OutlineInputBorder(),
+                ),
                 keyboardType: TextInputType.emailAddress,
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: _passwordController,
-                decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                  border: OutlineInputBorder(),
+                ),
                 obscureText: true,
               ),
               const SizedBox(height: 24),
@@ -183,7 +226,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : ElevatedButton(
                       onPressed: _handleLogin,
-                      style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(50),
+                      ),
                       child: const Text('Sign In'),
                     ),
               const SizedBox(height: 8),
@@ -193,7 +238,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextButton(
                     onPressed: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => const SignupScreen()),
+                        MaterialPageRoute(
+                          builder: (context) => const SignupScreen(),
+                        ),
                       );
                     },
                     child: const Text('Create an account'),
@@ -205,9 +252,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   _errorMessage,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ]
+              ],
             ],
           ),
         ),
@@ -239,11 +289,16 @@ class _SignupScreenState extends State<SignupScreen> {
     final confirm = _confirmPasswordController.text;
 
     if (name.isEmpty || email.isEmpty || password.isEmpty || confirm.isEmpty) {
-      setState(() => _errorMessage = 'Please fill all fields.');
+      setState(() {
+        _errorMessage = 'Please fill all fields.';
+      });
       return;
     }
+
     if (password != confirm) {
-      setState(() => _errorMessage = 'Passwords do not match.');
+      setState(() {
+        _errorMessage = 'Passwords do not match.';
+      });
       return;
     }
 
@@ -253,19 +308,36 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     try {
-      final record = await PocketBaseService().signUp(email: email, password: password, name: name);
+      final record = await PocketBaseService().signUp(
+        email: email,
+        password: password,
+        name: name,
+      );
+
       debugPrint('Signup success: ${record.id}');
 
       if (!mounted) return;
+
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        MaterialPageRoute(
+          builder: (context) => const HomeScreen(),
+        ),
         (route) => false,
       );
     } catch (e, st) {
       debugPrint('Signup error: $e\n$st');
-      setState(() => _errorMessage = 'Signup failed: $e');
+
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Signup failed: $e';
+        });
+      }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -283,30 +355,42 @@ class _SignupScreenState extends State<SignupScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Create Account')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             TextField(
               controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Full name', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Full name',
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _emailController,
-              decoration: const InputDecoration(labelText: 'Email address', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Email address',
+                border: OutlineInputBorder(),
+              ),
               keyboardType: TextInputType.emailAddress,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
-              decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(),
+              ),
               obscureText: true,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _confirmPasswordController,
-              decoration: const InputDecoration(labelText: 'Confirm password', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Confirm password',
+                border: OutlineInputBorder(),
+              ),
               obscureText: true,
             ),
             const SizedBox(height: 16),
@@ -314,17 +398,19 @@ class _SignupScreenState extends State<SignupScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : ElevatedButton(
                     onPressed: _handleSignUp,
-                    style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(50),
+                    ),
                     child: const Text('Create Account'),
                   ),
             if (_errorMessage.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(
                 _errorMessage,
-                style: const TextStyle(color: Colors.red),
                 textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red),
               ),
-            ]
+            ],
           ],
         ),
       ),
