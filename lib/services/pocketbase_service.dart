@@ -1,20 +1,22 @@
 import 'package:pocketbase/pocketbase.dart';
 
+const String pocketBaseUrl = 'http://10.253.154.218:8090';
+
+final PocketBase pb = PocketBase(pocketBaseUrl);
+
 class PocketBaseService {
   PocketBaseService._();
   static final PocketBaseService _instance = PocketBaseService._();
   factory PocketBaseService() => _instance;
 
-  static const String baseUrl = 'http://10.253.154.218:8090';
+  static const String baseUrl = pocketBaseUrl;
 
-  final PocketBase _client = PocketBase(baseUrl);
-
-  PocketBase get client => _client;
-  bool get isLoggedIn => _client.authStore.isValid;
-  RecordModel? get currentUser => _client.authStore.model;
+  PocketBase get client => pb;
+  bool get isLoggedIn => pb.authStore.isValid;
+  RecordModel? get currentUser => pb.authStore.model;
 
   Future<void> login(String email, String password) async {
-    await _client.collection('users').authWithPassword(email, password);
+    await pb.collection('users').authWithPassword(email, password);
   }
 
   Future<void> signUp({
@@ -23,7 +25,7 @@ class PocketBaseService {
     required String name,
     String role = 'customer',
   }) async {
-    await _client.collection('users').create(
+    await pb.collection('users').create(
       body: {
         'email': email,
         'password': password,
@@ -42,7 +44,7 @@ class PocketBaseService {
       return const [];
     }
 
-    final records = await _client.collection('orders').getFullList(
+    final records = await pb.collection('orders').getFullList(
       filter: 'user_id = "$userId"',
       sort: '-created',
     );
@@ -51,14 +53,14 @@ class PocketBaseService {
   }
 
   Future<List<RecordModel>> getAllOrders() async {
-    final records = await _client.collection('orders').getFullList(
+    final records = await pb.collection('orders').getFullList(
       sort: '-created',
     );
     return records;
   }
 
   Future<RecordModel> fetchOrderById(String id) async {
-    return _client.collection('orders').getOne(id);
+    return pb.collection('orders').getOne(id);
   }
 
   Future<RecordModel> createDemoOrder({
@@ -76,7 +78,7 @@ class PocketBaseService {
 
     final total = quantity * 5.0;
 
-    final record = await _client.collection('orders').create(
+    final record = await pb.collection('orders').create(
       body: {
         'user_id': userId,
         'customer_name': displayName,
@@ -114,35 +116,35 @@ class PocketBaseService {
       throw ArgumentError('No fields provided to update');
     }
 
-    return _client.collection('orders').update(id, body: body);
+    return pb.collection('orders').update(id, body: body);
   }
 
   Future<RecordModel> updateOrderStatus(String id, String status) async {
-    return _client.collection('orders').update(id, body: {'status': status});
+    return pb.collection('orders').update(id, body: {'status': status});
   }
 
   Future<RecordModel> claimOrder(String id) async {
     final userId = currentUser?.id;
     if (userId == null) throw StateError('Not logged in');
 
-    return _client.collection('orders').update(id, body: {
+    return pb.collection('orders').update(id, body: {
       'driver_id': userId,
       'status': 'Accepted',
     });
   }
 
   Future<void> unclaimOrder(String id) async {
-    await _client.collection('orders').update(id, body: {
+    await pb.collection('orders').update(id, body: {
       'driver_id': null,
       'status': 'New',
     });
   }
 
   Future<void> deleteOrder(String id) async {
-    await _client.collection('orders').delete(id);
+    await pb.collection('orders').delete(id);
   }
 
   Future<void> logout() async {
-    _client.authStore.clear();
+    pb.authStore.clear();
   }
 }
