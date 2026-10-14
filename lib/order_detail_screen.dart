@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:waterapp2/services/pocketbase_service.dart';
+import 'package:intl/intl.dart';
 import 'package:pocketbase/pocketbase.dart';
 import 'package:waterapp2/order_status_timeline.dart';
+import 'package:waterapp2/services/pocketbase_service.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final String orderId;
@@ -20,9 +21,11 @@ class OrderDetailScreen extends StatefulWidget {
 class _OrderDetailScreenState extends State<OrderDetailScreen> {
   late Future<RecordModel> _orderFuture;
 
+  RecordModel? _cancellationRequest;
+  bool _isLoadingCancellation = true;
+  bool _cancellationLoadFailed = false;
   bool _isUpdatingStatus = false;
   bool _isSubmittingCancellation = false;
-  bool _cancellationSent = false;
 
   final List<String> _statuses = [
     'New',
@@ -35,6 +38,47 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   void initState() {
     super.initState();
     _orderFuture = PocketBaseService().fetchOrderById(widget.orderId);
+    _loadCancellationRequest();
+  }
+
+  Future<void> _loadCancellationRequest() async {
+    if (mounted) {
+      setState(() {
+        _isLoadingCancellation = true;
+        _cancellationLoadFailed = false;
+      });
+    }
+
+    try {
+      final result = await pb.collection('cancellation_requests').getList(
+            page: 1,
+            perPage: 1,
+            filter: 'order = "${widget.orderId}"',
+            sort: '-created',
+          );
+
+      if (!mounted) return;
+
+      setState(() {
+        _cancellationRequest =
+            result.items.isEmpty ? null : result.items.first;
+        _isLoadingCancellation = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _cancellationLoadFailed = true;
+        _isLoadingCancellation = false;
+      });
+    }
+  }
+
+  Future<void> _refreshDetails() async {
+    setState(() {
+      _orderFuture = PocketBaseService().fetchOrderById(widget.orderId);
+    });
+    await _loadCancellationRequest();
   }
 
   Future<void> _updateStatus(String orderId, String newStatus) async {
@@ -94,7 +138,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     setState(() => _isSubmittingCancellation = true);
 
     try {
-      await pb.collection('cancellation_requests').create(
+      final request = await pb.collection('cancellation_requests').create(
         body: {
           'order': order.id,
           'reason': '',
@@ -104,7 +148,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
       if (!mounted) return;
 
-      setState(() => _cancellationSent = true);
+      setState(() {
+        _cancellationRequest = request;
+        _cancellationLoadFailed = false;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cancellation request sent')),
       );
@@ -135,7 +183,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Widget _buildRow(String title, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -163,32 +211,31 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final date = DateTime.tryParse(value.toString());
     if (date == null) return value.toString();
 
-    final localDate = date.toLocal();
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
+    return DateFormat('MMM d, y • h:mm a').format(date.toLocal());
+  }
 
-    final hour = localDate.hour % 12 == 0 ? 12 : localDate.hour % 12;
-    final minute = localDate.minute.toString().padLeft(2, '0');
-    final amPm = localDate.hour >= 12 ? 'PM' : 'AM';
+  String get _cancellationStatus {
+    final status =
+        _cancellationRequest?.getStringValue('request_status').trim();
 
-    return '${months[localDate.month - 1]} ${localDate.day}, '
-        '${localDate.year} • $hour:$minute $amPm';
+    if (status == null || status.isEmpty) return '—';
+
+    return status[0].toUpperCase() + status.substring(1);
+  }
+
+  bool get _canRequestCancellation {
+    final status =
+        _cancellationRequest?.getStringValue('request_status').toLowerCase();
+
+    // A rejected request can be submitted again. Pending or approved requests
+    // should not be duplicated.
+    return _cancellationRequest == null || status == 'rejected';
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDriver = pb.authStore.model?.data['role'] == 'driver';
+
     return Scaffold(
       appBar: AppBar(title: const Text('Order Details')),
       body: FutureBuilder<RecordModel>(
@@ -213,7 +260,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
           final order = snapshot.data!;
 
-          // Keep the PocketBase ID for updates; don't display it.
+          // Keep the record ID for PocketBase operations; do not display it.
           final id = order.id;
           final customerName = order.getStringValue('customer_name');
           final phone = order.getStringValue('phone');
@@ -233,6 +280,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             statusOptions.insert(0, status);
           }
 
+          final cancellationStatus = _cancellationLoadFailed
+              ? 'Could not load status'
+              : _isLoadingCancellation
+                  ? 'Loading…'
+                  : _cancellationStatus;
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -243,56 +296,71 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 _buildRow('Address', address),
                 _buildRow('Quantity', quantity),
                 _buildRow('Notes', notes),
-                DropdownButtonFormField<String>(
-                  value: status.isEmpty ? null : status,
-                  decoration: const InputDecoration(
-                    labelText: 'Order status',
-                  ),
-                  items: statusOptions
-                      .map(
-                        (value) => DropdownMenuItem<String>(
-                          value: value,
-                          child: Text(value),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: _isUpdatingStatus
-                      ? null
-                      : (value) {
-                          if (value != null && value != status) {
-                            _updateStatus(id, value);
-                          }
-                        },
-                ),
+
+                if (isDriver)
+                  DropdownButtonFormField<String>(
+                    value: status.isEmpty ? null : status,
+                    decoration: const InputDecoration(
+                      labelText: 'Order status',
+                    ),
+                    items: statusOptions
+                        .map(
+                          (value) => DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _isUpdatingStatus
+                        ? null
+                        : (value) {
+                            if (value != null && value != status) {
+                              _updateStatus(id, value);
+                            }
+                          },
+                  )
+                else
+                  _buildRow('Status', status.isEmpty ? '—' : status),
+
                 if (_isUpdatingStatus) ...[
                   const SizedBox(height: 12),
                   const LinearProgressIndicator(),
                 ],
+
                 _buildRow('Total', total),
                 _buildRow('Driver', driverId),
                 const SizedBox(height: 12),
                 _buildRow('Created', created),
                 _buildRow('Updated', updated),
                 const SizedBox(height: 20),
+
                 OrderStatusTimeline(orderId: id),
                 const SizedBox(height: 20),
 
-                // Only show this to customers, and not for delivered orders.
                 if (widget.onReorder != null &&
                     status.toLowerCase() != 'delivered') ...[
+                  _buildRow('Cancellation request', cancellationStatus),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
-                      onPressed:
-                          _isSubmittingCancellation || _cancellationSent
-                              ? null
-                              : () => _requestCancellation(order),
+                      onPressed: _isLoadingCancellation ||
+                              _cancellationLoadFailed ||
+                              _isSubmittingCancellation ||
+                              !_canRequestCancellation
+                          ? (_cancellationLoadFailed
+                              ? _loadCancellationRequest
+                              : null)
+                          : () => _requestCancellation(order),
                       child: Text(
                         _isSubmittingCancellation
                             ? 'Sending request...'
-                            : _cancellationSent
-                                ? 'Cancellation requested'
-                                : 'Request cancellation',
+                            : _isLoadingCancellation
+                                ? 'Loading request status...'
+                                : _cancellationLoadFailed
+                                    ? 'Retry loading request status'
+                                    : !_canRequestCancellation
+                                        ? 'Cancellation $_cancellationStatus'
+                                        : 'Request cancellation',
                       ),
                     ),
                   ),
@@ -312,15 +380,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 ],
 
                 ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _orderFuture =
-                          PocketBaseService().fetchOrderById(widget.orderId);
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Refreshing...')),
-                    );
-                  },
+                  onPressed: _refreshDetails,
                   child: const Text('Refresh'),
                 ),
               ],
