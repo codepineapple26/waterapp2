@@ -139,11 +139,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           final status = order.getStringValue('status').trim();
           final total = _formatDynamic(order.data['total']);
           final driverId = _formatDynamic(order.data['driver_id']);
-          final created = _formatDynamic(
-            order.data['created'] ??
-                order.data['created_at'] ??
-                order.getStringValue('created'),
-          );
+          final created = _formatCreated(order.getStringValue('created'));
+
           final updated = _formatDynamic(
             order.data['updated'] ?? order.getStringValue('updated'),
           );
@@ -160,9 +157,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Order ID: $id',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
+                      'Order ID: $id',
+                   style: const TextStyle(fontWeight: FontWeight.bold),
+                     ),
+const SizedBox(height: 12),
+
                 const SizedBox(height: 12),
                 _buildRow('Customer', customerName),
                 _buildRow('Phone', phone),
