@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:pocketbase/pocketbase.dart';
-// Unified root directory imports matching your exact repository structure
-import 'pocketbase_service.dart'; 
-import 'create_order_screen.dart'; 
+// Using the absolute package mapping referencing your correctly named file
+import 'package:water_delivery/pocketbase_service.dart'; 
+import 'package:water_delivery/create_order_screen.dart'; 
 
 void main() {
   runApp(const MyApp());
@@ -20,7 +20,6 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      // Automatically check local memory cache for persistent user token status
       home: pb.authStore.isValid ? const CreateOrderScreen() : const LoginScreen(),
     );
   }
@@ -51,7 +50,6 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Connect to the PocketBase backend instance specified in your service file
       final authData = await pb.collection('users').authWithPassword(
         _emailController.text.trim(),
         _passwordController.text.trim(),
@@ -59,7 +57,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (authData.token.isNotEmpty) {
         if (!mounted) return;
-        // Swap screens to prevent user from backing into empty login forms
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const CreateOrderScreen()),
         );
