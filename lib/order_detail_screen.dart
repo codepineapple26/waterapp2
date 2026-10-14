@@ -83,10 +83,26 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  String _formatDynamic(dynamic value) {
-    if (value == null) return '—';
-    return value.toString();
-  }
+  String _formatCreated(dynamic value) {
+  if (value == null || value.toString().isEmpty) return '—';
+
+  final date = DateTime.tryParse(value.toString());
+  if (date == null) return value.toString();
+
+  final localDate = date.toLocal();
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  final hour = localDate.hour % 12 == 0 ? 12 : localDate.hour % 12;
+  final minute = localDate.minute.toString().padLeft(2, '0');
+  final amPm = localDate.hour >= 12 ? 'PM' : 'AM';
+
+  return '${months[localDate.month - 1]} ${localDate.day}, '
+      '${localDate.year} • $hour:$minute $amPm';
+}
+
 
   @override
   Widget build(BuildContext context) {
