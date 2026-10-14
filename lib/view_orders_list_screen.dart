@@ -18,18 +18,18 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
     _ordersFuture = _loadOrders();
   }
 
-  Future<List<RecordModel>> _loadOrders() async {
-    final userId = pb.authStore.model?.id;
+ Future<List<RecordModel>> _loadOrders() async {
+  final userId = pb.authStore.model?.id;
 
-    if (userId == null || userId.isEmpty) {
-      return const [];
-    }
-
-    return pb.collection('orders').getFullList(
-          filter: 'user_id = "$userId"',
-          sort: '-created',
-        );
+  if (userId == null || userId.isEmpty) {
+    return const [];
   }
+
+  return pb.collection('orders').getFullList(
+    filter: 'user_id = "$userId" || driver_id = "$userId"',
+    sort: '-created',
+  );
+}
 
   String _formatTotal(dynamic value) {
     final total = value is num
