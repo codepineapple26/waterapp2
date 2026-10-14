@@ -27,6 +27,18 @@ jobs:
           channel: stable
           cache: false
 
+      - name: Configure Flutter SDK for Gradle
+        shell: bash
+        run: |
+          FLUTTER_SDK_PATH="$(dirname "$(dirname "$(which flutter)")")"
+          mkdir -p android
+          if [ -f android/local.properties ] && grep -q '^flutter\.sdk=' android/local.properties; then
+            sed -i "s|^flutter\.sdk=.*|flutter.sdk=${FLUTTER_SDK_PATH}|" android/local.properties
+          else
+            echo "flutter.sdk=${FLUTTER_SDK_PATH}" >> android/local.properties
+          fi
+          cat android/local.properties
+
       - name: Install project dependencies
         run: flutter pub get
 
