@@ -33,26 +33,27 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Index 0 is Place Order; index 1 is View Orders.
   int _currentIndex = 1;
-
-  final List<Widget> _screens = [
-    CreateOrderScreen(allowSubmit: true),
-    const ViewOrdersListScreen(),
-  ];
+  int _ordersVersion = 0;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          CreateOrderScreen(allowSubmit: true),
+          ViewOrdersListScreen(key: ValueKey(_ordersVersion)),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
           setState(() {
             _currentIndex = index;
+            if (index == 1) {
+              _ordersVersion++;
+            }
           });
         },
         items: const [
@@ -69,6 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
 
 
 class LoginScreen extends StatefulWidget {
