@@ -19,7 +19,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   bool _isUpdatingStatus = false;
 
-  // Change these to the status values used by your app.
   final List<String> _statuses = [
     'New',
     'Accepted',
@@ -83,26 +82,40 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
+  String _formatDynamic(dynamic value) {
+    if (value == null || value.toString().isEmpty) return '—';
+    return value.toString();
+  }
+
   String _formatCreated(dynamic value) {
-  if (value == null || value.toString().isEmpty) return '—';
+    if (value == null || value.toString().isEmpty) return '—';
 
-  final date = DateTime.tryParse(value.toString());
-  if (date == null) return value.toString();
+    final date = DateTime.tryParse(value.toString());
+    if (date == null) return value.toString();
 
-  final localDate = date.toLocal();
-  const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
+    final localDate = date.toLocal();
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
 
-  final hour = localDate.hour % 12 == 0 ? 12 : localDate.hour % 12;
-  final minute = localDate.minute.toString().padLeft(2, '0');
-  final amPm = localDate.hour >= 12 ? 'PM' : 'AM';
+    final hour = localDate.hour % 12 == 0 ? 12 : localDate.hour % 12;
+    final minute = localDate.minute.toString().padLeft(2, '0');
+    final amPm = localDate.hour >= 12 ? 'PM' : 'AM';
 
-  return '${months[localDate.month - 1]} ${localDate.day}, '
-      '${localDate.year} • $hour:$minute $amPm';
-}
-
+    return '${months[localDate.month - 1]} ${localDate.day}, '
+        '${localDate.year} • $hour:$minute $amPm';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -130,6 +143,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
           final order = snapshot.data!;
 
+          // Keep the PocketBase ID for updates; don't display it in the UI.
           final id = order.id;
           final customerName = order.getStringValue('customer_name');
           final phone = order.getStringValue('phone');
@@ -140,12 +154,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           final total = _formatDynamic(order.data['total']);
           final driverId = _formatDynamic(order.data['driver_id']);
           final created = _formatCreated(order.getStringValue('created'));
-
           final updated = _formatDynamic(
             order.data['updated'] ?? order.getStringValue('updated'),
           );
 
-          // Include an existing status even if it isn't in _statuses.
           final statusOptions = List<String>.from(_statuses);
           if (status.isNotEmpty && !statusOptions.contains(status)) {
             statusOptions.insert(0, status);
@@ -156,13 +168,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                      'Order ID: $id',
-                   style: const TextStyle(fontWeight: FontWeight.bold),
-                     ),
-const SizedBox(height: 12),
-
-                const SizedBox(height: 12),
                 _buildRow('Customer', customerName),
                 _buildRow('Phone', phone),
                 _buildRow('Address', address),
