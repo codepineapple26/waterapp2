@@ -4,10 +4,12 @@ import 'package:pocketbase/pocketbase.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final String orderId;
+  final ValueChanged<Map<String, dynamic>>? onReorder;
 
   const OrderDetailScreen({
     super.key,
     required this.orderId,
+    this.onReorder,
   });
 
   @override
@@ -61,6 +63,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         setState(() => _isUpdatingStatus = false);
       }
     }
+  }
+
+  void _reorder(RecordModel order) {
+    widget.onReorder?.call({
+      'customer_name': order.getStringValue('customer_name'),
+      'phone': order.getStringValue('phone'),
+      'address': order.getStringValue('address'),
+      'quantity': order.getIntValue('quantity'),
+      'notes': order.data['notes'] ?? '',
+    });
+
+    Navigator.of(context).pop();
   }
 
   Widget _buildRow(String title, String value) {
@@ -131,7 +145,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           if (snapshot.hasError) {
             return Center(
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(16),
                 child: Text('Failed to load order: ${snapshot.error}'),
               ),
             );
@@ -143,7 +157,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
           final order = snapshot.data!;
 
-          // Keep the PocketBase ID for updates; don't display it in the UI.
+          // Keep the PocketBase ID for updates; do not display it in the UI.
           final id = order.id;
           final customerName = order.getStringValue('customer_name');
           final phone = order.getStringValue('phone');
@@ -164,7 +178,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           }
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -204,6 +218,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 _buildRow('Created', created),
                 _buildRow('Updated', updated),
                 const SizedBox(height: 20),
+                if (widget.onReorder != null) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _reorder(order),
+                      icon: const Icon(Icons.replay),
+                      label: const Text('Reorder this order'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 ElevatedButton(
                   onPressed: () {
                     setState(() {
