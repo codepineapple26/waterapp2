@@ -102,6 +102,58 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
   }
 
+  Future<void> _confirmAndSubmit() async {
+    if (!widget.allowSubmit) return;
+
+    final address = _addressController.text.trim();
+    final phone = _phoneController.text.trim();
+    final quantity = int.tryParse(_quantityController.text) ?? 1;
+    final total = (quantity * 5.0);
+
+    if (!PocketBaseService().isLoggedIn || PocketBaseService().currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in required')));
+      return;
+    }
+
+    if (address.isEmpty || phone.isEmpty) {
+      final msg = address.isEmpty ? 'Address cannot be blank.' : 'Phone cannot be blank.';
+      setState(() => _statusMessage = msg);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Order'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Name: ${_nameController.text.trim()}'),
+            Text('Phone: $phone'),
+            Text('Address: $address'),
+            Text('Quantity: $quantity'),
+            Text('Total: ₹${total.toStringAsFixed(2)}'),
+            if (_notesController.text.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Text('Notes:'),
+              Text(_notesController.text.trim()),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Place Order')),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _submitOrder();
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -192,7 +244,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : ElevatedButton(
-                    onPressed: widget.allowSubmit ? _submitOrder : null,
+                    onPressed: widget.allowSubmit ? _confirmAndSubmit : null,
                     style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
                     child: Text(widget.allowSubmit ? 'Confirm & Submit Order' : 'Submission disabled'),
                   ),
