@@ -1,14 +1,25 @@
-pluginManagement {
-    def flutterSdkPath = {
-        def properties = new Properties()
-        file("../local.properties").withInputStream { properties.load(it) }
-        def flutterSdkPath = properties.getProperty("flutter.sdk")
-        assert flutterSdkPath != null : "flutter.sdk not set in local.properties"
-        return flutterSdkPath
-    }()
+// Try local.properties first, then fall back to FLUTTER_ROOT env var.
+def flutterSdkPath = null
+def localProperties = new Properties()
+def localPropertiesFile = file("../local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+    flutterSdkPath = localProperties.getProperty("flutter.sdk")
+}
 
+if (flutterSdkPath == null) {
+    flutterSdkPath = System.getenv("FLUTTER_ROOT") ?: System.getenv("FLUTTER_HOME")
+}
+
+if (flutterSdkPath != null) {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+} else {
+    // No local Flutter SDK path found; plugin resolution will rely on pluginManagement repositories below.
+    // On CI you should ensure FLUTTER_ROOT is set by your workflow or use the flutter/setup action.
+    println("Warning: Flutter SDK path not found in local.properties or environment; plugin includeBuild skipped.")
+}
 
+pluginManagement {
     repositories {
         google()
         mavenCentral()
@@ -17,7 +28,6 @@ pluginManagement {
 }
 
 plugins {
-    id "dev.flutter.flutter-plugin-loader" version "1.0.0"
     id "com.android.application" version "8.3.2" apply false
     id "org.jetbrains.kotlin.android" version "1.9.22" apply false
 }
