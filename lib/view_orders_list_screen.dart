@@ -3,7 +3,12 @@ import 'package:pocketbase/pocketbase.dart';
 import 'package:waterapp2/services/pocketbase_service.dart';
 
 class ViewOrdersListScreen extends StatefulWidget {
-  const ViewOrdersListScreen({super.key});
+  const ViewOrdersListScreen({
+    super.key,
+    this.onReorder,
+  });
+
+  final ValueChanged<Map<String, dynamic>>? onReorder;
 
   @override
   State<ViewOrdersListScreen> createState() => _ViewOrdersListScreenState();
@@ -18,36 +23,44 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
     _ordersFuture = _loadOrders();
   }
 
- Future<List<RecordModel>> _loadOrders() async {
-  final userId = pb.authStore.model?.id;
+  Future<List<RecordModel>> _loadOrders() async {
+    final userId = pb.authStore.model?.id;
 
-  if (userId == null || userId.isEmpty) {
-    return const [];
+    if (userId == null || userId.isEmpty) {
+      return const [];
+    }
+
+    return pb.collection('orders').getFullList(
+          filter: 'user_id = "$userId" || driver_id = "$userId"',
+          sort: '-created',
+        );
   }
 
-  return pb.collection('orders').getFullList(
-    filter: 'user_id = "$userId" || driver_id = "$userId"',
-    sort: '-created',
-  );
-}
-
   String _formatTotal(dynamic value) {
-    final total = value is num
-        ? value
-        : num.tryParse(value?.toString() ?? '');
+    final total = value is num ? value : num.tryParse(value?.toString() ?? '');
 
     return total == null ? '—' : '₹${total.toStringAsFixed(2)}';
   }
 
   Future<void> _openOrderDetails(RecordModel order) async {
-  await Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => OrderDetailsScreen(order: order),
-    ),
-  );
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => OrderDetailsScreen(order: order),
+      ),
+    );
 
-  if (mounted) _refreshOrders();
-}
+    if (!mounted) return;
+
+    _refreshOrders();
+
+    if (result?['action'] == 'reorder') {
+      final rawDraft = result?['draft'];
+
+      if (rawDraft is Map) {
+        widget.onReorder?.call(Map<String, dynamic>.from(rawDraft));
+      }
+    }
+  }
 
   void _refreshOrders() {
     setState(() {
@@ -200,15 +213,28 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
+  void _reorder() {
+    final data = widget.order.data;
+
+    Navigator.pop<Map<String, dynamic>>(context, {
+      'action': 'reorder',
+      'draft': {
+        'customer_name': data['customer_name'],
+        'phone': data['phone'],
+        'address': data['address'],
+        'quantity': data['quantity'],
+        'notes': data['notes'],
+      },
+    });
+  }
+
   String _value(dynamic value) {
     if (value == null || value.toString().trim().isEmpty) return '—';
     return value.toString();
   }
 
   String _formatTotal(dynamic value) {
-    final total = value is num
-        ? value
-        : num.tryParse(value?.toString() ?? '');
+    final total = value is num ? value : num.tryParse(value?.toString() ?? '');
     return total == null ? '—' : '₹${total.toStringAsFixed(2)}';
   }
 
@@ -219,13 +245,16 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final data = widget.order.data;
+    final isDriver =
+        pb.authStore.model?.getStringValue('role') == 'driver';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Order Details')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _detail('Order ID', widget.order.id),
+          // The PocketBase record ID remains available in code for updates,
+          // but is intentionally not shown in the UI.
           _detail('Quantity', _value(data['quantity'])),
           _detail('Address', _value(data['address'])),
           _detail('Status', _status),
@@ -233,10 +262,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             value: _status,
             decoration: const InputDecoration(labelText: 'Update status'),
             items: _statuses
-                .map((value) => DropdownMenuItem(
-                      value: value,
-                      child: Text(value),
-                    ))
+                .map(
+                  (value) => DropdownMenuItem(
+                    value: value,
+                    child: Text(value),
+                  ),
+                )
                 .toList(),
             onChanged: _saving
                 ? null
@@ -248,6 +279,17 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           ),
           if (_saving) const LinearProgressIndicator(),
           _detail('Total', _formatTotal(data['total'])),
+          if (!isDriver) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _reorder,
+                icon: const Icon(Icons.replay),
+                label: const Text('Reorder this order'),
+              ),
+            ),
+          ],
         ],
       ),
     );
