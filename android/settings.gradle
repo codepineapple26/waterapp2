@@ -1,3 +1,11 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
 // Try local.properties first, then fall back to FLUTTER_ROOT env var.
 def flutterSdkPath = null
 def localProperties = new Properties()
@@ -14,17 +22,7 @@ if (flutterSdkPath == null) {
 if (flutterSdkPath != null) {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 } else {
-    // No local Flutter SDK path found; plugin resolution will rely on pluginManagement repositories below.
-    // On CI you should ensure FLUTTER_ROOT is set by your workflow or use the flutter/setup action.
     println("Warning: Flutter SDK path not found in local.properties or environment; plugin includeBuild skipped.")
-}
-
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
 }
 
 plugins {
