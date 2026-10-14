@@ -6,11 +6,20 @@ pluginManagement {
             localPropertiesFile.withInputStream { properties.load(it) }
         }
 
-        def flutterSdkPath = properties.getProperty("flutter.sdk")
-        if (flutterSdkPath == null || flutterSdkPath.isEmpty()) {
-            throw new GradleException("flutter.sdk not set in local.properties")
+        // Prefer local.properties, then environment variables (set in CI by Flutter action).
+        def flutterSdk = properties.getProperty("flutter.sdk")
+        if (flutterSdk == null || flutterSdk.trim().length() == 0) {
+            flutterSdk = System.getenv("FLUTTER_ROOT") ?: System.getenv("FLUTTER_HOME")
         }
-        return flutterSdkPath
+
+        if (flutterSdk == null || flutterSdk.trim().length() == 0) {
+            throw new GradleException(
+                "flutter.sdk not set in local.properties and FLUTTER_ROOT/FLUTTER_HOME are not set.\n" +
+                "In CI, ensure the Flutter action sets FLUTTER_ROOT (e.g., subosito/flutter-action). " +
+                "Locally, run `flutter` to generate local.properties or add `flutter.sdk=<path>` to local.properties."
+            )
+        }
+        return flutterSdk
     }()
 
     includeBuild("${flutterSdkPath}/packages/flutter_tools/gradle")
