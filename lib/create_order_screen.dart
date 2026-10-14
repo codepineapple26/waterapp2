@@ -4,7 +4,8 @@ import 'package:pocketbase/pocketbase.dart';
 import 'package:waterapp2/services/pocketbase_service.dart'; 
 
 class CreateOrderScreen extends StatefulWidget {
-  const CreateOrderScreen({super.key});
+  final bool allowSubmit;
+  const CreateOrderScreen({super.key, this.allowSubmit = true});
 
   @override
   State<CreateOrderScreen> createState() => _CreateOrderScreenState();
@@ -47,6 +48,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 
   Future<void> _submitOrder() async {
+    if (!widget.allowSubmit) return;
+
     if (_addressController.text.trim().isEmpty) {
       setState(() => _statusMessage = 'Delivery address cannot be blank.');
       return;
@@ -117,9 +120,25 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (!widget.allowSubmit) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.yellow.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Viewing mode: order submission is disabled. Log in to create orders.',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             TextField(
               controller: _nameController,
               decoration: const InputDecoration(labelText: 'Customer Name', border: OutlineInputBorder()),
+              readOnly: !widget.allowSubmit && !pb.authStore.isValid,
             ),
             const SizedBox(height: 16),
             TextField(
@@ -130,6 +149,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 helperText: 'Loaded from profile. Edit if different for this specific order.',
               ),
               keyboardType: TextInputType.phone,
+              readOnly: !widget.allowSubmit && !pb.authStore.isValid,
             ),
             const SizedBox(height: 16),
             TextField(
@@ -140,26 +160,29 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 helperText: 'Loaded from profile. Edit if different for this specific order.',
               ),
               maxLines: 2,
+              readOnly: !widget.allowSubmit && !pb.authStore.isValid,
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _quantityController,
               decoration: const InputDecoration(labelText: 'Quantity', border: OutlineInputBorder()),
               keyboardType: TextInputType.number,
+              readOnly: !widget.allowSubmit && !pb.authStore.isValid,
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _notesController,
               decoration: const InputDecoration(labelText: 'Special Delivery Instructions (Optional)', border: OutlineInputBorder()),
               maxLines: 2,
+              readOnly: !widget.allowSubmit && !pb.authStore.isValid,
             ),
             const SizedBox(height: 24),
             _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : ElevatedButton(
-                    onPressed: _submitOrder,
+                    onPressed: widget.allowSubmit ? _submitOrder : null,
                     style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
-                    child: const Text('Confirm & Submit Order'),
+                    child: Text(widget.allowSubmit ? 'Confirm & Submit Order' : 'Submission disabled'),
                   ),
             if (_statusMessage.isNotEmpty) ...[
               const SizedBox(height: 24),
