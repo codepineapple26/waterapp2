@@ -39,7 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // The multi-view layout panel restoring your "Place Order" and "View Orders" features side-by-side
   final List<Widget> _screens = [
-    const CreateOrderScreen(), // View Index 0: Places editable orders
+    CreateOrderScreen(allowSubmit: true), // View Index 0: Places editable orders
     const ViewOrdersListScreen(), // View Index 1: Tracks past delivery history cards
   ];
 
@@ -162,6 +162,30 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
                       child: const Text('Sign In'),
                     ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const SignupScreen()),
+                      );
+                    },
+                    child: const Text('Create an account'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () {
+                      // Allow viewing the place-order screen without submitting
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => CreateOrderScreen(allowSubmit: false)),
+                      );
+                    },
+                    child: const Text('View Place Order'),
+                  ),
+                ],
+              ),
               if (_errorMessage.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 Text(
@@ -178,77 +202,115 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// --- FULLY FUNCTIONAL PANEL: Active Order History View ---
-class ViewOrdersListScreen extends StatelessWidget {
-  const ViewOrdersListScreen({super.key});
+class SignupScreen extends StatefulWidget {
+  const SignupScreen({super.key});
+
+  @override
+  State<SignupScreen> createState() => _SignupScreenState();
+}
+
+class _SignupScreenState extends State<SignupScreen> {
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+
+  bool _isLoading = false;
+  String _errorMessage = '';
+
+  Future<void> _handleSignUp() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final confirm = _confirmPasswordController.text;
+
+    if (name.isEmpty || email.isEmpty || password.isEmpty || confirm.isEmpty) {
+      setState(() => _errorMessage = 'Please fill all fields.');
+      return;
+    }
+    if (password != confirm) {
+      setState(() => _errorMessage = 'Passwords do not match.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      await PocketBaseService().signUp(email: email, password: password, name: name);
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        (route) => false,
+      );
+    } catch (e) {
+      setState(() => _errorMessage = 'Signup failed: ${e.toString()}');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Orders Log'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              pb.authStore.clear(); // Wipes cached token out of local storage
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-              );
-            },
-          )
-        ],
-      ),
-      body: FutureBuilder(
-        // Queries your PocketBase 'orders' collection specifically for this user's cards
-        future: pb.collection('orders').getFullList(
-          filter: 'user_id = "${pb.authStore.model?.id}"',
-          sort: '-created',
-        ),
-        builder: (context, AsyncSnapshot<List<RecordModel>> snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error rendering data: ${snapshot.error}'));
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('No past delivery operations logged yet.'));
-          }
-
-          final orders = snapshot.data!;
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: orders.length,
-            itemBuilder: (context, index) {
-              final order = orders[index];
-              final status = order.getStringValue('status').toLowerCase();
-              
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: const Icon(Icons.water_damage, color: Colors.blue),
-                  title: Text('Water Jar Quantity: ${order.getIntValue('quantity')}'),
-                  subtitle: Text('Delivery Target: ${order.getStringValue('address')}'),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: status == 'assigned' ? Colors.green.shade100 : Colors.orange.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      status.toUpperCase(),
-                      style: TextStyle(
-                        color: status == 'assigned' ? Colors.green.shade800 : Colors.orange.shade800,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+      appBar: AppBar(title: const Text('Create Account')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _nameController,
+              decoration: const InputDecoration(labelText: 'Full name', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _emailController,
+              decoration: const InputDecoration(labelText: 'Email address', border: OutlineInputBorder()),
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _passwordController,
+              decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder()),
+              obscureText: true,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _confirmPasswordController,
+              decoration: const InputDecoration(labelText: 'Confirm password', border: OutlineInputBorder()),
+              obscureText: true,
+            ),
+            const SizedBox(height: 16),
+            _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : ElevatedButton(
+                    onPressed: _handleSignUp,
+                    style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                    child: const Text('Create Account'),
                   ),
-                ),
-              );
-            },
-          );
-        },
+            if (_errorMessage.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                _errorMessage,
+                style: const TextStyle(color: Colors.red),
+                textAlign: TextAlign.center,
+              ),
+            ]
+          ],
+        ),
       ),
     );
   }
