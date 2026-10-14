@@ -19,23 +19,34 @@ class PocketBaseService {
     await pb.collection('users').authWithPassword(email, password);
   }
 
-  Future<void> signUp({
+  /// Creates a new user record in PocketBase and logs them in.
+  /// Returns the created RecordModel on success. Throws on error.
+  Future<RecordModel> signUp({
     required String email,
     required String password,
     required String name,
     String role = 'customer',
   }) async {
-    await pb.collection('users').create(
-      body: {
-        'email': email,
-        'password': password,
-        'passwordConfirm': password,
-        'name': name,
-        'role': role,
-      },
-    );
+    try {
+      final record = await pb.collection('users').create(
+        body: {
+          'email': email,
+          'password': password,
+          'passwordConfirm': password,
+          'name': name,
+          'role': role,
+        },
+      );
 
-    await login(email, password);
+      // login after successful creation
+      await login(email, password);
+      return record;
+    } catch (e) {
+      // surface the original error for the UI and logs
+      // ignore: avoid_print
+      print('PocketBaseService.signUp error: $e');
+      rethrow;
+    }
   }
 
   Future<List<RecordModel>> getMyOrders() async {
