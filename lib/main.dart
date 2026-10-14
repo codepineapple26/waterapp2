@@ -33,7 +33,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
+  // Index 0 is Place Order; index 1 is View Orders.
+  int _currentIndex = 1;
 
   final List<Widget> _screens = [
     CreateOrderScreen(allowSubmit: true),
@@ -42,7 +43,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('HomeScreen.build: currentIndex=$_currentIndex, authValid=${pb.authStore.isValid}');
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
@@ -50,19 +50,26 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (int index) {
+        onTap: (index) {
           setState(() {
             _currentIndex = index;
           });
         },
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.add_shopping_cart), label: 'Place Order'),
-          BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'View Orders'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.add_shopping_cart),
+            label: 'Place Order',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.list_alt),
+            label: 'View Orders',
+          ),
         ],
       ),
     );
   }
 }
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
