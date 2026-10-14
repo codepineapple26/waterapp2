@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pocketbase/pocketbase.dart';
-// Aligned carefully to the services subfolder under the waterapp2 module
-import 'package:waterapp2/services/pocketbase_service.dart'; 
+import 'package:waterapp2/services/pocketbase_service.dart';
 
 class CreateOrderScreen extends StatefulWidget {
   final bool allowSubmit;
@@ -30,7 +29,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   void _loadBackendUserData() {
     if (pb.authStore.isValid && pb.authStore.model != null) {
       final userModel = pb.authStore.model as RecordModel;
-      
+
       final backendName = userModel.getStringValue('name');
       final backendPhone = userModel.getStringValue('phone');
       final backendAddress = userModel.getStringValue('address');
@@ -43,12 +42,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
   }
 
-  Future HolidayOrder() async {
-    // Keep internal tracking stable during execution tasks
-  }
-
   Future<void> _submitOrder() async {
     if (!widget.allowSubmit) return;
+
+    if (!pb.authStore.isValid || pb.authStore.model == null) {
+      setState(() => _statusMessage = 'You must be signed in to place an order.');
+      return;
+    }
 
     if (_addressController.text.trim().isEmpty) {
       setState(() => _statusMessage = 'Delivery address cannot be blank.');
@@ -65,24 +65,19 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     });
 
     try {
-      final currentUser = pb.authStore.model as RecordModel;
+      final quantity = int.tryParse(_quantityController.text) ?? 1;
 
-      await pb.collection('orders').create(
-        body: {
-          'customer_name': _nameController.text.trim(),
-          'phone': _phoneController.text.trim(),        
-          'address': _addressController.text.trim(),    
-          'quantity': int.tryParse(_quantityController.text) ?? 1,
-          'notes': _notesController.text.trim(),
-          'status': 'pending',                          
-          'user_id': currentUser.id,
-        },
+      // Use the service layer so logic like total calculation and user checks live in one place.
+      final record = await PocketBaseService().createDemoOrder(
+        address: _addressController.text.trim(),
+        phone: _phoneController.text.trim(),
+        quantity: quantity,
+        notes: _notesController.text.trim(),
       );
 
-      setState(() => _statusMessage = 'Order placed successfully!');
+      setState(() => _statusMessage = 'Order placed successfully! (id: ${record.id})');
       _quantityController.text = '1';
       _notesController.clear();
-      
     } catch (error) {
       setState(() => _statusMessage = 'Submission failed: ${error.toString()}');
     } finally {
@@ -144,7 +139,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             TextField(
               controller: _phoneController,
               decoration: const InputDecoration(
-                labelText: 'Contact Phone Number', 
+                labelText: 'Contact Phone Number',
                 border: OutlineInputBorder(),
                 helperText: 'Loaded from profile. Edit if different for this specific order.',
               ),
@@ -155,7 +150,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             TextField(
               controller: _addressController,
               decoration: const InputDecoration(
-                labelText: 'Delivery Address', 
+                labelText: 'Delivery Address',
                 border: OutlineInputBorder(),
                 helperText: 'Loaded from profile. Edit if different for this specific order.',
               ),
