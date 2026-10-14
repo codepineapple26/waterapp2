@@ -140,7 +140,7 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
   }
 }
 
-class OrderDetailsScreen extends StatelessWidget {
+class OrderDetailsScreen extends StatefulWidget {
   const OrderDetailsScreen({
     super.key,
     required this.order,
@@ -148,10 +148,58 @@ class OrderDetailsScreen extends StatelessWidget {
 
   final RecordModel order;
 
-  String _value(dynamic value) {
-    if (value == null || value.toString().trim().isEmpty) {
-      return '—';
+  @override
+  State<OrderDetailsScreen> createState() => _OrderDetailsScreenState();
+}
+
+class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
+  final List<String> _statuses = [
+    'New',
+    'Accepted',
+    'Out for delivery',
+    'Delivered',
+  ];
+
+  late String _status;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _status = widget.order.getStringValue('status').trim();
+
+    if (_status.isEmpty) _status = 'New';
+    if (!_statuses.contains(_status)) _statuses.insert(0, _status);
+  }
+
+  Future<void> _updateStatus(String newStatus) async {
+    setState(() => _saving = true);
+
+    try {
+      await pb.collection('orders').update(
+        widget.order.id,
+        body: {'status': newStatus},
+      );
+
+      if (mounted) {
+        setState(() => _status = newStatus);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Order status updated')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update status: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
+  }
+
+  String _value(dynamic value) {
+    if (value == null || value.toString().trim().isEmpty) return '—';
     return value.toString();
   }
 
@@ -159,31 +207,44 @@ class OrderDetailsScreen extends StatelessWidget {
     final total = value is num
         ? value
         : num.tryParse(value?.toString() ?? '');
-
     return total == null ? '—' : '₹${total.toStringAsFixed(2)}';
   }
 
   Widget _detail(String label, String value) {
-    return ListTile(
-      title: Text(label),
-      subtitle: Text(value),
-    );
+    return ListTile(title: Text(label), subtitle: Text(value));
   }
 
   @override
   Widget build(BuildContext context) {
-    final data = order.data;
-    final status = order.getStringValue('status').trim();
+    final data = widget.order.data;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Order Details')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _detail('Order ID', order.id),
+          _detail('Order ID', widget.order.id),
           _detail('Quantity', _value(data['quantity'])),
           _detail('Address', _value(data['address'])),
-          _detail('Status', status.isNotEmpty ? status : 'New'),
+          _detail('Status', _status),
+          DropdownButtonFormField<String>(
+            value: _status,
+            decoration: const InputDecoration(labelText: 'Update status'),
+            items: _statuses
+                .map((value) => DropdownMenuItem(
+                      value: value,
+                      child: Text(value),
+                    ))
+                .toList(),
+            onChanged: _saving
+                ? null
+                : (value) {
+                    if (value != null && value != _status) {
+                      _updateStatus(value);
+                    }
+                  },
+          ),
+          if (_saving) const LinearProgressIndicator(),
           _detail('Total', _formatTotal(data['total'])),
         ],
       ),
