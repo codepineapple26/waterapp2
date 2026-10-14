@@ -225,7 +225,7 @@ class ViewOrdersListScreen extends StatelessWidget {
               final status = order.getStringValue('status').toLowerCase();
               
               return Card(
-                margin: const EdgeInsets.bottom(12),
+                margin: const EdgeInsets.only(bottom: 12),
                 child: ListTile(
                   leading: const Icon(Icons.water_damage, color: Colors.blue),
                   title: Text('Water Jar Quantity: ${order.getIntValue('quantity')}'),
