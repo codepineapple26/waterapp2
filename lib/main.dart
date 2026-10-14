@@ -35,6 +35,22 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 1;
   int _ordersVersion = 0;
+  int _formVersion = 0;
+
+  Map<String, dynamic>? _reorderDraft;
+
+  bool get _isDriver =>
+      pb.authStore.model?.getStringValue('role') == 'driver';
+
+  void _handleReorder(Map<String, dynamic> draft) {
+    if (_isDriver) return;
+
+    setState(() {
+      _reorderDraft = draft;
+      _currentIndex = 0;
+      _formVersion++;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,8 +58,15 @@ class _HomeScreenState extends State<HomeScreen> {
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          CreateOrderScreen(allowSubmit: true),
-          ViewOrdersListScreen(key: ValueKey(_ordersVersion)),
+          CreateOrderScreen(
+            key: ValueKey('create-order-$_formVersion'),
+            allowSubmit: !_isDriver,
+            initialValues: _reorderDraft,
+          ),
+          ViewOrdersListScreen(
+            key: ValueKey(_ordersVersion),
+            onReorder: _handleReorder,
+          ),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -70,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
 
 
 
