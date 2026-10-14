@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:waterapp2/services/pocketbase_service.dart';
-import 'package:pocketbase/pocketbase.dart';
 
 class CreateOrderScreen extends StatefulWidget {
   final bool allowSubmit;
-  const CreateOrderScreen({super.key, this.allowSubmit = true});
+  final Map<String, dynamic>? initialValues;
+
+  const CreateOrderScreen({
+    super.key,
+    this.allowSubmit = true,
+    this.initialValues,
+  });
 
   @override
   State<CreateOrderScreen> createState() => _CreateOrderScreenState();
@@ -24,30 +29,66 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   void initState() {
     super.initState();
     _loadBackendUserData();
+    _applyInitialValues(widget.initialValues);
+  }
+
+  @override
+  void didUpdateWidget(covariant CreateOrderScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // The screen may remain mounted in an IndexedStack. Apply a new draft
+    // when a customer selects "Reorder this order".
+    if (oldWidget.initialValues != widget.initialValues) {
+      _applyInitialValues(widget.initialValues);
+    }
   }
 
   void _loadBackendUserData() {
-    if (PocketBaseService().isLoggedIn && PocketBaseService().currentUser != null) {
-      final userModel = PocketBaseService().currentUser!;
+    final service = PocketBaseService();
+
+    if (service.isLoggedIn && service.currentUser != null) {
+      final userModel = service.currentUser!;
 
       final backendName = userModel.getStringValue('name');
       final backendPhone = userModel.getStringValue('phone');
       final backendAddress = userModel.getStringValue('address');
 
-      setState(() {
-        if (backendName.isNotEmpty) _nameController.text = backendName;
-        if (backendPhone.isNotEmpty) _phoneController.text = backendPhone;
-        if (backendAddress.isNotEmpty) _addressController.text = backendAddress;
-      });
+      if (backendName.isNotEmpty) _nameController.text = backendName;
+      if (backendPhone.isNotEmpty) _phoneController.text = backendPhone;
+      if (backendAddress.isNotEmpty) _addressController.text = backendAddress;
+    }
+  }
+
+  void _applyInitialValues(Map<String, dynamic>? values) {
+    if (values == null) return;
+
+    if (values.containsKey('customer_name')) {
+      _nameController.text = values['customer_name']?.toString() ?? '';
+    }
+    if (values.containsKey('phone')) {
+      _phoneController.text = values['phone']?.toString() ?? '';
+    }
+    if (values.containsKey('address')) {
+      _addressController.text = values['address']?.toString() ?? '';
+    }
+    if (values.containsKey('quantity')) {
+      _quantityController.text = values['quantity']?.toString() ?? '1';
+    }
+    if (values.containsKey('notes')) {
+      _notesController.text = values['notes']?.toString() ?? '';
     }
   }
 
   Future<void> _submitOrder() async {
     if (!widget.allowSubmit) return;
 
-    if (!PocketBaseService().isLoggedIn || PocketBaseService().currentUser == null) {
+    final service = PocketBaseService();
+
+    if (!service.isLoggedIn || service.currentUser == null) {
       setState(() => _statusMessage = 'You must be signed in to place an order.');
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in required')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in required')),
+      );
       return;
     }
 
@@ -71,30 +112,32 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     try {
       final quantity = int.tryParse(_quantityController.text) ?? 1;
 
-      // Use the service layer to create the order (handles total & user checks)
-      final record = await PocketBaseService().createDemoOrder(
+      await service.createDemoOrder(
         address: address,
         phone: phone,
         quantity: quantity,
         notes: _notesController.text.trim(),
       );
 
-      final msg = 'Order placed successfully! (id: ${record.id})';
-      setState(() => _statusMessage = msg);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      if (!mounted) return;
 
-      // Reset form
+      const msg = 'Order placed successfully!';
+      setState(() => _statusMessage = msg);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(msg)),
+      );
+
       _quantityController.text = '1';
       _notesController.clear();
-
-      // DO NOT pop the route here — CreateOrderScreen is often part of the home tab.
-      // Previously popping caused the app to navigate away/blank the UI. Instead,
-      // keep the user on the Place Order screen and rely on the orders list to refresh.
     } catch (error, st) {
+      if (!mounted) return;
+
       final msg = 'Submission failed: ${error.toString()}';
       setState(() => _statusMessage = msg);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-      // Log stacktrace to console for debugging
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg)),
+      );
+
       // ignore: avoid_print
       print('Order submit error: $error\n$st');
     } finally {
@@ -108,17 +151,24 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final address = _addressController.text.trim();
     final phone = _phoneController.text.trim();
     final quantity = int.tryParse(_quantityController.text) ?? 1;
-    final total = (quantity * 5.0);
+    final total = quantity * 5.0;
 
-    if (!PocketBaseService().isLoggedIn || PocketBaseService().currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign in required')));
+    final service = PocketBaseService();
+    if (!service.isLoggedIn || service.currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in required')),
+      );
       return;
     }
 
     if (address.isEmpty || phone.isEmpty) {
-      final msg = address.isEmpty ? 'Address cannot be blank.' : 'Phone cannot be blank.';
+      final msg = address.isEmpty
+          ? 'Address cannot be blank.'
+          : 'Phone cannot be blank.';
       setState(() => _statusMessage = msg);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg)),
+      );
       return;
     }
 
@@ -143,15 +193,20 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Place Order')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Place Order'),
+          ),
         ],
       ),
     );
 
-    if (confirmed == true) {
-      await _submitOrder();
-    }
+    if (!mounted) return;
+    if (confirmed == true) await _submitOrder();
   }
 
   @override
@@ -180,7 +235,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -201,7 +256,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             ],
             TextField(
               controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Customer Name', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Customer Name',
+                border: OutlineInputBorder(),
+              ),
               readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
             const SizedBox(height: 16),
@@ -210,7 +268,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               decoration: const InputDecoration(
                 labelText: 'Contact Phone Number',
                 border: OutlineInputBorder(),
-                helperText: 'Loaded from profile. Edit if different for this specific order.',
+                helperText:
+                    'Loaded from profile. Edit if different for this specific order.',
               ),
               keyboardType: TextInputType.phone,
               readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
@@ -221,7 +280,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               decoration: const InputDecoration(
                 labelText: 'Delivery Address',
                 border: OutlineInputBorder(),
-                helperText: 'Loaded from profile. Edit if different for this specific order.',
+                helperText:
+                    'Loaded from profile. Edit if different for this specific order.',
               ),
               maxLines: 2,
               readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
@@ -229,14 +289,20 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: _quantityController,
-              decoration: const InputDecoration(labelText: 'Quantity', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Quantity',
+                border: OutlineInputBorder(),
+              ),
               keyboardType: TextInputType.number,
               readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _notesController,
-              decoration: const InputDecoration(labelText: 'Special Delivery Instructions (Optional)', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Special Delivery Instructions (Optional)',
+                border: OutlineInputBorder(),
+              ),
               maxLines: 2,
               readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
@@ -244,9 +310,16 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : ElevatedButton(
-                    onPressed: widget.allowSubmit ? _confirmAndSubmit : null,
-                    style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
-                    child: Text(widget.allowSubmit ? 'Confirm & Submit Order' : 'Submission disabled'),
+                    onPressed:
+                        widget.allowSubmit ? _confirmAndSubmit : null,
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(50),
+                    ),
+                    child: Text(
+                      widget.allowSubmit
+                          ? 'Confirm & Submit Order'
+                          : 'Submission disabled',
+                    ),
                   ),
             if (_statusMessage.isNotEmpty) ...[
               const SizedBox(height: 24),
@@ -254,12 +327,14 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 child: Text(
                   _statusMessage,
                   style: TextStyle(
-                    color: _statusMessage.contains('successfully') ? Colors.green : Colors.red,
+                    color: _statusMessage.contains('successfully')
+                        ? Colors.green
+                        : Colors.red,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-            ]
+            ],
           ],
         ),
       ),
