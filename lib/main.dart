@@ -42,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('HomeScreen.build: currentIndex=$_currentIndex, authValid=${pb.authStore.isValid}');
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
@@ -55,14 +56,8 @@ class _HomeScreenState extends State<HomeScreen> {
           });
         },
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_shopping_cart),
-            label: 'Place Order',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt),
-            label: 'View Orders',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.add_shopping_cart), label: 'Place Order'),
+          BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'View Orders'),
         ],
       ),
     );
@@ -101,14 +96,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (authData.token.isNotEmpty) {
         if (!mounted) return;
+        debugPrint('Login successful. token present.');
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const HomeScreen()),
         );
       }
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Invalid email/password or server connection dropped.';
-      });
+    } catch (e, st) {
+      debugPrint('Login error: $e\n$st');
+      setState(() => _errorMessage = 'Invalid email/password or server connection dropped.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -225,15 +220,17 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     try {
-      await PocketBaseService().signUp(email: email, password: password, name: name);
+      final record = await PocketBaseService().signUp(email: email, password: password, name: name);
+      debugPrint('Signup success: ${record.id}');
 
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const HomeScreen()),
         (route) => false,
       );
-    } catch (e) {
-      setState(() => _errorMessage = 'Signup failed: ${e.toString()}');
+    } catch (e, st) {
+      debugPrint('Signup error: $e\n$st');
+      setState(() => _errorMessage = 'Signup failed: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
