@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:pocketbase/pocketbase.dart';
-// Using the absolute package mapping referencing your correctly named file
-import 'package:water_delivery/pocketbase_service.dart'; 
-import 'package:water_delivery/create_order_screen.dart'; 
+// Using the exact application folder package identifier mapping
+import 'package:waterapp2/pocketbase_service.dart'; 
+import 'package:waterapp2/create_order_screen.dart'; 
 
 void main() {
   runApp(const MyApp());
