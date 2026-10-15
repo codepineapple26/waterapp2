@@ -1,4 +1,4 @@
-# Water Delivery
+# Water
 
 A simple Flutter app for water delivery ordering with PocketBase authentication and an order dashboard that lets users see their own order delivery status.
 
