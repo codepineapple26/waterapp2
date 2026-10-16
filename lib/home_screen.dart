@@ -121,6 +121,11 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: _refreshOrders,
               icon: const Icon(Icons.refresh),
             ),
+          IconButton(
+              tooltip: 'Sign Out',
+              icon: const Icon(Icons.logout),
+              onPressed: _showSignOutDialog, // Opens the box we added in Chunk 1
+            ),
         ],
       ),
       body: isPlacingOrder
