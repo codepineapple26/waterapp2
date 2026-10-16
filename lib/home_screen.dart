@@ -31,6 +31,39 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _ordersFuture = future);
     await future;
   }
+   // ==========================================
+  // >>> START OF CHANGE: SIGN OUT LOGIC METHOD
+  // ==========================================
+  void _showSignOutDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Sign Out'),
+          content: const Text('Are you sure you want to log out of your account?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                // 1. Clears the local auth session token from PocketBase memory
+                widget.service.pb.authStore.clear(); 
+                
+                // 2. Clear routing history and redirect
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const Scaffold(body: Center(child: Text("Logged Out")))),
+                  (Route<dynamic> route) => false,
+                );
+              },
+              child: const Text('Sign Out', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   dynamic _field(dynamic order, List<String> names) {
     Map<String, dynamic>? data;
