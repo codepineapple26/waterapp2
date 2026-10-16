@@ -32,7 +32,16 @@ class _DriverDashboardState extends State<DriverDashboard> {
     super.initState();
     _loadOrders();
   }
+  
+Future<void> _openCreateOrder() async {
+  await Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) => const CreateOrderScreen(),
+    ),
+  );
 
+  if (mounted) await _loadOrders();
+}
   Future<void> _loadOrders() async {
     setState(() => _loading = true);
     try {
@@ -164,6 +173,12 @@ class _DriverDashboardState extends State<DriverDashboard> {
             onPressed: widget.onLogout,
             tooltip: 'Logout',
           ),
+          IconButton(
+            tooltip: 'Create Order',
+              icon: const Icon(Icons.add_shopping_cart),
+             onPressed: _openCreateOrder,
+        ),
+
         ],
       ),
       body: SafeArea(
