@@ -50,15 +50,14 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             TextButton(
               onPressed: () {
-                // 1. Clears the local auth session token from PocketBase memory
-                widget.service.pb.authStore.clear(); 
-                
-                // 2. Clear routing history and redirect
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const Scaffold(body: Center(child: Text("Logged Out")))),
-                  (Route<dynamic> route) => false,
-                );
-              },
+                          widget.service.pb.authStore.clear();
+
+                       Navigator.of(context).pushAndRemoveUntil(
+                       MaterialPageRoute(builder: (_) => const LoginScreen()),
+                        (route) => false,
+               );
+               },
+
               child: const Text('Sign Out', style: TextStyle(color: Colors.red)),
             ),
           ],
