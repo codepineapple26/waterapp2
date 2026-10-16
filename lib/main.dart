@@ -49,10 +49,9 @@ class _HomeScreenState extends State<HomeScreen> {
   int _ordersVersion = 0;
 
   bool _showOrderForm = false;
-  String? _selectedPlaceId;
   Map<String, dynamic>? _reorderDraft;
 
-  late final Future<List<dynamic>> _placesFuture;
+  late Future<List<dynamic>> _ordersFuture;
 
   bool get _isDriver =>
       pb.authStore.model?.getStringValue('role') == 'driver';
@@ -60,34 +59,117 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _ordersFuture = _loadOrders();
+  }
 
-    // Change 'delivery_places' if your PocketBase collection has another name.
-    _placesFuture = pb.collection('delivery_places').getFullList(sort: 'name');
+  Future<List<dynamic>> _loadOrders() {
+    final userId = pb.authStore.model?.id;
+
+    if (userId == null || userId.isEmpty) {
+      return Future.error(StateError('No authenticated user.'));
+    }
+
+    final filter = _isDriver
+        ? 'driver_id = "$userId"'
+        : 'user_id = "$userId"';
+
+    return pb.collection('orders').getFullList(
+          filter: filter,
+          sort: '-created',
+        );
+  }
+
+  void _refreshOrders() {
+    setState(() {
+      _ordersFuture = _loadOrders();
+      _ordersVersion++;
+    });
+  }
+
+  void _openOrderForm({Map<String, dynamic>? draft}) {
+    setState(() {
+      _reorderDraft = draft;
+      _showOrderForm = true;
+    });
   }
 
   void _handleReorder(Map<String, dynamic> draft) {
     if (_isDriver) return;
-
-    // A customer must still choose a delivery place before the form opens.
-    setState(() {
-      _reorderDraft = draft;
-      _currentIndex = 0;
-      _showOrderForm = false;
-    });
+    _openOrderForm(draft: draft);
   }
 
-  void _openOrderForm(dynamic place) {
-    setState(() {
-      _selectedPlaceId = place.id;
-      _showOrderForm = true;
-    });
+  String _orderStatus(dynamic order) {
+    final data = order.data as Map<String, dynamic>;
+    return (data['status'] ?? data['order_status'] ?? '')
+        .toString()
+        .toLowerCase()
+        .trim();
+  }
+
+  double _numberFromOrder(dynamic order, List<String> fieldNames) {
+    final data = order.data as Map<String, dynamic>;
+
+    for (final field in fieldNames) {
+      final value = data[field];
+
+      if (value is num) {
+        return value.toDouble();
+      }
+
+      final parsed = double.tryParse(value?.toString() ?? '');
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
+    return 0;
+  }
+
+  double _amountPaid(dynamic order) {
+    final data = order.data as Map<String, dynamic>;
+
+    // Use an explicit paid amount when the collection has one.
+    for (final field in ['amount_paid', 'paid_amount']) {
+      final value = data[field];
+
+      if (value is num) {
+        return value.toDouble();
+      }
+
+      final parsed = double.tryParse(value?.toString() ?? '');
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
+    // Otherwise count the order total only when marked as paid.
+    final paymentStatus =
+        (data['payment_status'] ?? '').toString().toLowerCase().trim();
+
+    if (paymentStatus == 'paid') {
+      return _numberFromOrder(
+        order,
+        ['total_amount', 'total_price', 'amount', 'price'],
+      );
+    }
+
+    return 0;
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isDriver) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Orders')),
+        appBar: AppBar(
+          title: const Text('Orders'),
+          actions: [
+            IconButton(
+              tooltip: 'Refresh orders',
+              onPressed: _refreshOrders,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
         body: ViewOrdersListScreen(
           key: ValueKey('driver-orders-$_ordersVersion'),
           onReorder: _handleReorder,
@@ -95,13 +177,39 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    if (_showOrderForm && _selectedPlaceId != null) {
-      return _buildOrderForm();
+    if (_showOrderForm) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Place Order'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              setState(() {
+                _showOrderForm = false;
+                _reorderDraft = null;
+                _ordersFuture = _loadOrders();
+              });
+            },
+          ),
+        ),
+        body: CreateOrderScreen(
+          key: ValueKey('create-order-$_ordersVersion'),
+          allowSubmit: true,
+          initialValues: _reorderDraft ?? const {},
+        ),
+      );
     }
 
     return Scaffold(
       appBar: AppBar(
         title: Text(_currentIndex == 0 ? 'Dashboard' : 'My Orders'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _refreshOrders,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: _currentIndex == 0
           ? _buildDashboard()
@@ -114,9 +222,9 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: (index) {
           setState(() {
             _currentIndex = index;
-            _showOrderForm = false;
 
             if (index == 1) {
+              _ordersFuture = _loadOrders();
               _ordersVersion++;
             }
           });
@@ -135,31 +243,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildOrderForm() {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Place Order'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => setState(() => _showOrderForm = false),
-        ),
-      ),
-      body: CreateOrderScreen(
-        key: ValueKey('create-order-$_selectedPlaceId'),
-        allowSubmit: true,
-        initialValues: {
-          ...?_reorderDraft,
-
-          // These keys must match what CreateOrderScreen reads and saves.
-          'delivery_place_id': _selectedPlaceId,
-        },
-      ),
-    );
-  }
-
   Widget _buildDashboard() {
     return FutureBuilder<List<dynamic>>(
-      future: _placesFuture,
+      future: _ordersFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -169,22 +255,29 @@ class _HomeScreenState extends State<HomeScreen> {
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('Could not load delivery places: ${snapshot.error}'),
+              child: Text('Could not load your dashboard: ${snapshot.error}'),
             ),
           );
         }
 
-        final places = snapshot.data ?? [];
+        final orders = snapshot.data ?? [];
 
-        if (places.isEmpty) {
-          return const Center(
-            child: Text('No delivery places are available.'),
-          );
-        }
+        final deliveredCount = orders
+            .where((order) => _orderStatus(order) == 'delivered')
+            .length;
 
-        final selectedPlace = places.cast<dynamic>().where((place) {
-          return place.id == _selectedPlaceId;
-        }).firstOrNull;
+        // All non-delivered, non-cancelled orders are counted as pending.
+        final pendingCount = orders.where((order) {
+          final status = _orderStatus(order);
+          return status != 'delivered' &&
+              status != 'cancelled' &&
+              status != 'canceled';
+        }).length;
+
+        final totalPaid = orders.fold<double>(
+          0,
+          (sum, order) => sum + _amountPaid(order),
+        );
 
         return ListView(
           padding: const EdgeInsets.all(20),
@@ -193,39 +286,106 @@ class _HomeScreenState extends State<HomeScreen> {
               'Welcome',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
-            const SizedBox(height: 8),
-            const Text('Choose a delivery place to start an order.'),
-            const SizedBox(height: 24),
-            DropdownButtonFormField<String>(
-              value: _selectedPlaceId,
-              decoration: const InputDecoration(
-                labelText: 'Delivery place',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.location_on_outlined),
-              ),
-              items: places.map<DropdownMenuItem<String>>((place) {
-                // Change 'name' if your place-name field has another name.
-                final placeName = place.getStringValue('name');
-                return DropdownMenuItem<String>(
-                  value: place.id as String,
-                  child: Text(placeName),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() => _selectedPlaceId = value);
-              },
+            const SizedBox(height: 20),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.5,
+              children: [
+                _MetricCard(
+                  title: 'Total orders',
+                  value: '${orders.length}',
+                  icon: Icons.receipt_long_outlined,
+                ),
+                _MetricCard(
+                  title: 'Delivered',
+                  value: '$deliveredCount',
+                  icon: Icons.check_circle_outline,
+                ),
+                _MetricCard(
+                  title: 'Pending',
+                  value: '$pendingCount',
+                  icon: Icons.pending_outlined,
+                ),
+                _MetricCard(
+                  title: 'Total amount paid',
+                  value: totalPaid.toStringAsFixed(2),
+                  icon: Icons.payments_outlined,
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: selectedPlace == null
-                  ? null
-                  : () => _openOrderForm(selectedPlace),
-              icon: const Icon(Icons.shopping_cart_outlined),
-              label: const Text('Continue to order'),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _currentIndex = 1;
+                        _ordersVersion++;
+                      });
+                    },
+                    icon: const Icon(Icons.list_alt),
+                    label: const Text('My Orders'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => _openOrderForm(),
+                    icon: const Icon(Icons.add_shopping_cart),
+                    label: const Text('Place Order'),
+                  ),
+                ),
+              ],
             ),
           ],
         );
       },
+    );
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+  });
+
+  final String title;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -305,12 +465,19 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.water_drop, size: 80, color: Colors.blue),
+              const Icon(
+                Icons.water_drop,
+                size: 80,
+                color: Colors.blue,
+              ),
               const SizedBox(height: 16),
               const Text(
                 'Water Delivery Login',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 32),
               TextField(
@@ -421,7 +588,7 @@ class _SignupScreenState extends State<SignupScreen> {
         name: name,
       );
 
-      // Ensure the shared PocketBase client is authenticated after signup.
+      // Authenticate with the shared PocketBase client after signup.
       if (!pb.authStore.isValid) {
         await pb.collection('users').authWithPassword(email, password);
       }
