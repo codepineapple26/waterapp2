@@ -1,10 +1,25 @@
 import 'dart:convert';
 
 import 'package:pocketbase/pocketbase.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const String pocketBaseUrl = 'http://10.253.154.218:8090';
 
-final PocketBase pb = PocketBase(pocketBaseUrl);
+late final PocketBase pb;
+
+Future<void> initializePocketBase() async {
+  final prefs = await SharedPreferences.getInstance();
+
+  final authStore = AsyncAuthStore(
+    save: (String data) async {
+      await prefs.setString('pb_auth', data);
+    },
+    initial: prefs.getString('pb_auth'),
+  );
+
+  pb = PocketBase(pocketBaseUrl, authStore: authStore);
+}
+
 
 class PocketBaseService {
   PocketBaseService._();
