@@ -33,38 +33,41 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _ordersFuture = future);
     await future;
   }
-   // ==========================================
-  // >>> START OF CHANGE: SIGN OUT LOGIC METHOD
-  // ==========================================
-  void _showSignOutDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Sign Out'),
-          content: const Text('Are you sure you want to log out of your account?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                          widget.service.pb.authStore.clear();
+ void _showSignOutDialog() {
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Sign Out'),
+      content: const Text('Are you sure you want to log out?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () async {
+            await widget.service.logout();
 
-                       Navigator.of(context).pushAndRemoveUntil(
-                       MaterialPageRoute(builder: (_) => const LoginScreen()),
-                        (route) => false,
-               );
-               },
+            if (!mounted) return;
 
-              child: const Text('Sign Out', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    );
-  }
+            Navigator.of(dialogContext).pop();
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (_) => const LoginScreen(),
+              ),
+              (route) => false,
+            );
+          },
+          child: const Text(
+            'Sign Out',
+            style: TextStyle(color: Colors.red),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 
   dynamic _field(dynamic order, List<String> names) {
     Map<String, dynamic>? data;
