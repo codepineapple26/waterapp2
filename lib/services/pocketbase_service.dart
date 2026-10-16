@@ -65,14 +65,18 @@ class PocketBaseService {
     }
   }
 
+  /// Returns orders for the signed-in customer or driver.
   Future<List<RecordModel>> getMyOrders() async {
-    final userId = currentUser?.id;
-    if (userId == null) {
-      return const [];
-    }
+    final user = currentUser;
+    if (user == null) return const [];
+
+    final role = user.data['role']?.toString();
+    final filter = role == 'driver'
+        ? 'driver_id = "${user.id}"'
+        : 'user_id = "${user.id}"';
 
     return pb.collection('orders').getFullList(
-          filter: 'user_id = "$userId"',
+          filter: filter,
           sort: '-created',
         );
   }
@@ -92,8 +96,9 @@ class PocketBaseService {
     String notes = '',
     Map<String, dynamic>? deliverySchedule,
   }) async {
-    final userId = currentUser?.id;
-    final displayName = currentUser?.data['name'] ?? 'Customer';
+    final user = currentUser;
+    final userId = user?.id;
+    final displayName = user?.data['name'] ?? 'Customer';
 
     if (userId == null) {
       throw StateError('User must be logged in to create an order.');
@@ -112,7 +117,6 @@ class PocketBaseService {
         'notes': notes,
         'status': 'New',
         'total': total,
-        'driver_id': null,
         if (deliverySchedule != null)
           'delivery_schedule': jsonEncode(deliverySchedule),
       },
