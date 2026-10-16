@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:waterapp2/services/pocketbase_service.dart';
 import 'widgets/delivery_schedule_picker.dart';
 
-
 class CreateOrderScreen extends StatefulWidget {
   final bool allowSubmit;
   final Map<String, dynamic>? initialValues;
@@ -24,6 +23,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   final _quantityController = TextEditingController(text: '1');
   final _notesController = TextEditingController();
 
+  DeliverySchedule? _deliverySchedule;
+
   bool _isLoading = false;
   String _statusMessage = '';
 
@@ -38,8 +39,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   void didUpdateWidget(covariant CreateOrderScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // The screen may remain mounted in an IndexedStack. Apply a new draft
-    // when a customer selects "Reorder this order".
     if (oldWidget.initialValues != widget.initialValues) {
       _applyInitialValues(widget.initialValues);
     }
@@ -81,28 +80,37 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
   }
 
+  void _showMessage(String message) {
+    setState(() => _statusMessage = message);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   Future<void> _submitOrder() async {
     if (!widget.allowSubmit) return;
 
     final service = PocketBaseService();
 
     if (!service.isLoggedIn || service.currentUser == null) {
-      setState(() => _statusMessage = 'You must be signed in to place an order.');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sign in required')),
-      );
+      _showMessage('Sign in required to place an order.');
       return;
     }
 
     final address = _addressController.text.trim();
     final phone = _phoneController.text.trim();
+    final schedule = _deliverySchedule;
 
     if (address.isEmpty) {
-      setState(() => _statusMessage = 'Delivery address cannot be blank.');
+      _showMessage('Delivery address cannot be blank.');
       return;
     }
     if (phone.isEmpty) {
-      setState(() => _statusMessage = 'Contact phone number cannot be blank.');
+      _showMessage('Contact phone number cannot be blank.');
+      return;
+    }
+    if (schedule == null) {
+      _showMessage('Please choose a delivery date and time.');
       return;
     }
 
@@ -119,25 +127,27 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         phone: phone,
         quantity: quantity,
         notes: _notesController.text.trim(),
+        deliverySchedule: schedule.toJson(),
       );
 
       if (!mounted) return;
 
-      const msg = 'Order placed successfully!';
-      setState(() => _statusMessage = msg);
+      const message = 'Order placed successfully!';
+      setState(() => _statusMessage = message);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(msg)),
+        const SnackBar(content: Text(message)),
       );
 
       _quantityController.text = '1';
       _notesController.clear();
+      setState(() => _deliverySchedule = null);
     } catch (error, st) {
       if (!mounted) return;
 
-      final msg = 'Submission failed: ${error.toString()}';
-      setState(() => _statusMessage = msg);
+      final message = 'Submission failed: $error';
+      setState(() => _statusMessage = message);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg)),
+        SnackBar(content: Text(message)),
       );
 
       // ignore: avoid_print
@@ -154,29 +164,29 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final phone = _phoneController.text.trim();
     final quantity = int.tryParse(_quantityController.text) ?? 1;
     final total = quantity * 5.0;
+    final schedule = _deliverySchedule;
 
     final service = PocketBaseService();
     if (!service.isLoggedIn || service.currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sign in required')),
-      );
+      _showMessage('Sign in required');
       return;
     }
 
     if (address.isEmpty || phone.isEmpty) {
-      final msg = address.isEmpty
-          ? 'Address cannot be blank.'
-          : 'Phone cannot be blank.';
-      setState(() => _statusMessage = msg);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg)),
+      _showMessage(
+        address.isEmpty ? 'Address cannot be blank.' : 'Phone cannot be blank.',
       );
+      return;
+    }
+
+    if (schedule == null) {
+      _showMessage('Please choose a delivery date and time.');
       return;
     }
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Confirm Order'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -187,6 +197,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             Text('Address: $address'),
             Text('Quantity: $quantity'),
             Text('Total: ₹${total.toStringAsFixed(2)}'),
+            Text(
+              'Delivery date: '
+              '${MaterialLocalizations.of(dialogContext).formatMediumDate(schedule.date)}',
+            ),
+            Text('Delivery window: ${schedule.slot.label}'),
             if (_notesController.text.trim().isNotEmpty) ...[
               const SizedBox(height: 8),
               const Text('Notes:'),
@@ -196,11 +211,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Place Order'),
           ),
         ],
@@ -250,7 +265,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
-                  'Viewing mode: order submission is disabled. Log in to create orders.',
+                  'Viewing mode: order submission is disabled. '
+                  'Log in to create orders.',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
@@ -288,6 +304,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               maxLines: 2,
               readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
+            const SizedBox(height: 16),
+
+            // Customer selects the requested delivery date and time.
+            DeliverySchedulePicker(
+              onChanged: (schedule) {
+                setState(() => _deliverySchedule = schedule);
+              },
+            ),
+
             const SizedBox(height: 16),
             TextField(
               controller: _quantityController,
