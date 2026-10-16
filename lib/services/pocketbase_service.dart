@@ -21,6 +21,22 @@ class PocketBaseService {
     await pb.collection('users').authWithPassword(email, password);
   }
 
+  /// Gets the current bottle price from the pricing record in PocketBase.
+  Future<double> getPricePerBottle() async {
+    final record = await pb
+        .collection('app_settings')
+        .getFirstListItem('key = "pricing"');
+
+    final value = record.data['price_per_bottle'];
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    throw StateError(
+      'The pricing record is missing a valid price_per_bottle value.',
+    );
+  }
+
   /// Creates a new user record in PocketBase and logs them in.
   /// Returns the created RecordModel on success. Throws on error.
   Future<RecordModel> signUp({
@@ -83,9 +99,10 @@ class PocketBaseService {
       throw StateError('User must be logged in to create an order.');
     }
 
-    final total = quantity * 5.0;
+    final pricePerBottle = await getPricePerBottle();
+    final total = quantity * pricePerBottle;
 
-    final record = await pb.collection('orders').create(
+    return pb.collection('orders').create(
       body: {
         'user_id': userId,
         'customer_name': displayName,
@@ -100,8 +117,6 @@ class PocketBaseService {
           'delivery_schedule': jsonEncode(deliverySchedule),
       },
     );
-
-    return record;
   }
 
   Future<RecordModel> updateOrder(
@@ -115,10 +130,13 @@ class PocketBaseService {
 
     if (address != null) body['address'] = address;
     if (phone != null) body['phone'] = phone;
+
     if (quantity != null) {
+      final pricePerBottle = await getPricePerBottle();
       body['quantity'] = quantity;
-      body['total'] = quantity * 5.0;
+      body['total'] = quantity * pricePerBottle;
     }
+
     if (notes != null) body['notes'] = notes;
 
     if (body.isEmpty) {
