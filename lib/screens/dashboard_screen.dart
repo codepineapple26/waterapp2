@@ -265,12 +265,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onPressed: _loadOrders,
             tooltip: 'Refresh',
           ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: widget.onLogout,
-            tooltip: 'Logout',
-          ),
-        ],
+          actions: [
+  TextButton.icon(
+    onPressed: widget.onLogout,
+    icon: const Icon(Icons.logout),
+    label: const Text('Sign out'),
+  ),
+],
+
       ),
       body: SafeArea(
         child: Column(
