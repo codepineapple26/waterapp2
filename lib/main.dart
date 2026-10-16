@@ -203,6 +203,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_currentIndex == 0 ? 'Dashboard' : 'My Orders'),
+        leading: _currentIndex == 1
+            ? IconButton(
+                tooltip: 'Back to dashboard',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  setState(() => _currentIndex = 0);
+                },
+              )
+            : null,
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -217,28 +226,31 @@ class _HomeScreenState extends State<HomeScreen> {
               key: ValueKey('orders-$_ordersVersion'),
               onReorder: _handleReorder,
             ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-
-            if (index == 1) {
-              _ordersFuture = _loadOrders();
-              _ordersVersion++;
-            }
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt),
-            label: 'My Orders',
-          ),
-        ],
+      bottomNavigationBar: BottomAppBar(
+        child: Row(
+          children: [
+            Expanded(
+              child: TextButton.icon(
+                onPressed: () => _openOrderForm(),
+                icon: const Icon(Icons.add_shopping_cart),
+                label: const Text('Place Order'),
+              ),
+            ),
+            Expanded(
+              child: TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _currentIndex = 1;
+                    _ordersFuture = _loadOrders();
+                    _ordersVersion++;
+                  });
+                },
+                icon: const Icon(Icons.list_alt),
+                label: const Text('My Orders'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -314,31 +326,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: 'Total amount paid',
                   value: totalPaid.toStringAsFixed(2),
                   icon: Icons.payments_outlined,
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _currentIndex = 1;
-                        _ordersVersion++;
-                      });
-                    },
-                    icon: const Icon(Icons.list_alt),
-                    label: const Text('My Orders'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => _openOrderForm(),
-                    icon: const Icon(Icons.add_shopping_cart),
-                    label: const Text('Place Order'),
-                  ),
                 ),
               ],
             ),
