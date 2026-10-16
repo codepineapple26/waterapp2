@@ -56,13 +56,17 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!mounted) return;
+
+      // The parent widget handles navigation/display after successful login.
       widget.onLoginSuccess();
     } on ClientException catch (error) {
       if (!mounted) return;
       _showError(error.toString());
     } catch (error) {
       if (!mounted) return;
-      _showError('Unable to login. Please check your connection and credentials.');
+      _showError(
+        'Unable to login. Please check your connection and credentials.',
+      );
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -103,7 +107,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          _isCreatingAccount ? 'Create account' : 'Welcome back',
+                          _isCreatingAccount
+                              ? 'Create account'
+                              : 'Welcome back',
                           style: Theme.of(context).textTheme.headlineSmall,
                           textAlign: TextAlign.center,
                         ),
@@ -185,8 +191,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : const Icon(Icons.login_rounded),
                             label: Text(
                               _loading
-                                  ? (_isCreatingAccount ? 'Creating...' : 'Signing in...')
-                                  : (_isCreatingAccount ? 'Create account' : 'Sign in'),
+                                  ? (_isCreatingAccount
+                                      ? 'Creating...'
+                                      : 'Signing in...')
+                                  : (_isCreatingAccount
+                                      ? 'Create account'
+                                      : 'Sign in'),
                             ),
                           ),
                         ),
