@@ -3,6 +3,8 @@ import 'package:pocketbase/pocketbase.dart';
 
 import '../services/pocketbase_service.dart';
 import 'order_detail_screen.dart';
+import 'create_order_screen.dart';
+
 
 class DriverDashboard extends StatefulWidget {
   const DriverDashboard({
@@ -199,10 +201,19 @@ class _DriverDashboardState extends State<DriverDashboard> {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loadOrders,
-        label: const Text('Refresh'),
-        icon: const Icon(Icons.sync),
+  onPressed: () async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => const CreateOrderScreen(),
       ),
+    );
+
+    if (mounted) await _loadOrders();
+  },
+  label: const Text('Create Order'),
+  icon: const Icon(Icons.add),
+),
+
     );
   }
 }
