@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:pocketbase/pocketbase.dart';
 
-import '../services/pocketbase_service.dart';
+import 'services/pocketbase_service.dart';
 import 'create_order_screen.dart';
-import '../screens/login_screen.dart';
+import 'screens/login_screen.dart';
 
 
 class HomeScreen extends StatefulWidget {
