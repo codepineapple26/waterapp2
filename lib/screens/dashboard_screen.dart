@@ -258,7 +258,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final list = _filteredOrders;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard Test'),
+        title: const Text('Dashboard Test1'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
