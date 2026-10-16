@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:pocketbase/pocketbase.dart';
 
 const String pocketBaseUrl = 'http://10.253.154.218:8090';
@@ -95,7 +97,7 @@ class PocketBaseService {
         'total': total,
         'driver_id': null,
         if (deliverySchedule != null)
-          'delivery_schedule': deliverySchedule,
+          'delivery_schedule': jsonEncode(deliverySchedule),
       },
     );
 
