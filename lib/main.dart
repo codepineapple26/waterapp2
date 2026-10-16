@@ -3,9 +3,13 @@ import 'package:waterapp2/services/pocketbase_service.dart';
 import 'package:waterapp2/create_order_screen.dart';
 import 'package:waterapp2/view_orders_list_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializePocketBase();
+
   runApp(const MyApp());
 }
+
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
