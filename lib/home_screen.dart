@@ -110,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
      appBar: AppBar(
-  title: Text(isPlacingOrder ? 'Place Order' : 'Dashboard'),
+  title: const Text('Dashboard TEST'),
   actions: [
     if (!isPlacingOrder)
       IconButton(
