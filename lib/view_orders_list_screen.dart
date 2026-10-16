@@ -104,16 +104,7 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Orders'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh orders',
-            onPressed: () => _refreshOrders(),
-          ),
-        ],
-      ),
+      appBar: AppBar(),
       body: FutureBuilder<List<RecordModel>>(
         future: _ordersFuture,
         builder: (context, snapshot) {
