@@ -107,28 +107,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isPlacingOrder ? 'Place Order' : 'Dashboard'),
-        leading: isPlacingOrder
-            ? IconButton(
-                tooltip: 'Back to dashboard',
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => setState(() => selectedPlace = null),
-              )
-            : null,
-        actions: [
-          if (!isPlacingOrder)
-            IconButton(
-              tooltip: 'Refresh orders',
-              onPressed: _refreshOrders,
-              icon: const Icon(Icons.refresh),
-            ),
-          IconButton(
-              tooltip: 'Sign Out',
-              icon: const Icon(Icons.logout),
-              onPressed: _showSignOutDialog, // Opens the box we added in Chunk 1
-            ),
-        ],
+  title: Text(isPlacingOrder ? 'Place Order' : 'Dashboard'),
+  actions: [
+    if (!isPlacingOrder)
+      IconButton(
+        tooltip: 'Refresh orders',
+        onPressed: _refreshOrders,
+        icon: const Icon(Icons.refresh),
       ),
+    IconButton(
+      tooltip: 'Sign Out',
+      icon: const Icon(Icons.logout),
+      onPressed: _showSignOutDialog,
+    ),
+  ],
+),
+
       body: isPlacingOrder
           ? const CreateOrderScreen()
           : _buildDashboard(),
