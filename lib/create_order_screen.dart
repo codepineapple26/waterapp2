@@ -291,7 +291,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       return;
     }
 
-    // Fetch a fresh price for the confirmation dialog.
     double pricePerBottle;
     try {
       pricePerBottle = await service.getPricePerBottle();
@@ -367,18 +366,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Place New Order'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              PocketBaseService().logout();
-              Navigator.of(context).pushReplacementNamed('/');
-            },
-          ),
-        ],
-      ),
+      appBar: AppBar(),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
