@@ -38,11 +38,9 @@ class PocketBaseService {
         },
       );
 
-      // login after successful creation
       await login(email, password);
       return record;
     } catch (e) {
-      // surface the original error for the UI and logs
       // ignore: avoid_print
       print('PocketBaseService.signUp error: $e');
       rethrow;
@@ -55,19 +53,14 @@ class PocketBaseService {
       return const [];
     }
 
-    final records = await pb.collection('orders').getFullList(
-      filter: 'user_id = "$userId"',
-      sort: '-created',
-    );
-
-    return records;
+    return pb.collection('orders').getFullList(
+          filter: 'user_id = "$userId"',
+          sort: '-created',
+        );
   }
 
   Future<List<RecordModel>> getAllOrders() async {
-    final records = await pb.collection('orders').getFullList(
-      sort: '-created',
-    );
-    return records;
+    return pb.collection('orders').getFullList(sort: '-created');
   }
 
   Future<RecordModel> fetchOrderById(String id) async {
@@ -79,6 +72,7 @@ class PocketBaseService {
     required String phone,
     required int quantity,
     String notes = '',
+    Map<String, dynamic>? deliverySchedule,
   }) async {
     final userId = currentUser?.id;
     final displayName = currentUser?.data['name'] ?? 'Customer';
@@ -100,6 +94,8 @@ class PocketBaseService {
         'status': 'New',
         'total': total,
         'driver_id': null,
+        if (deliverySchedule != null)
+          'delivery_schedule': deliverySchedule,
       },
     );
 
