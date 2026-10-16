@@ -3,17 +3,12 @@ import 'package:pocketbase/pocketbase.dart';
 
 import '../services/pocketbase_service.dart';
 
-  class LoginScreen extends StatefulWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({
     super.key,
+    required this.service,
     required this.onLoginSuccess,
   });
-
-  final VoidCallback onLoginSuccess;
-
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
 
   final PocketBaseService service;
   final VoidCallback onLoginSuccess;
@@ -44,33 +39,35 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _loading = true);
 
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
     try {
       if (_isCreatingAccount) {
         await widget.service.signUp(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+          email: email,
+          password: password,
           name: _nameController.text.trim().isNotEmpty
               ? _nameController.text.trim()
               : 'New User',
         );
+
+        // Sign up may create the account without authenticating it.
+        // Logging in here ensures the parent receives an authenticated user.
+        await widget.service.login(email, password);
       } else {
-        await widget.service.login(
-          _emailController.text.trim(),
-          _passwordController.text.trim(),
-        );
+        await widget.service.login(email, password);
       }
 
       if (!mounted) return;
-
-      // The parent widget handles navigation/display after successful login.
       widget.onLoginSuccess();
     } on ClientException catch (error) {
       if (!mounted) return;
       _showError(error.toString());
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       _showError(
-        'Unable to login. Please check your connection and credentials.',
+        'Unable to continue. Please check your connection and credentials.',
       );
     } finally {
       if (mounted) {
@@ -129,6 +126,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         if (_isCreatingAccount)
                           TextFormField(
                             controller: _nameController,
+                            textCapitalization: TextCapitalization.words,
                             decoration: const InputDecoration(
                               labelText: 'Full name',
                               border: OutlineInputBorder(),
@@ -151,10 +149,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             prefixIcon: Icon(Icons.email_outlined),
                           ),
                           validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
+                            final email = value?.trim() ?? '';
+                            if (email.isEmpty) {
                               return 'Please enter an email';
                             }
-                            if (!value.contains('@')) {
+                            if (!email.contains('@')) {
                               return 'Please enter a valid email';
                             }
                             return null;
@@ -170,7 +169,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             prefixIcon: Icon(Icons.lock_outline),
                           ),
                           validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
+                            if (value == null || value.isEmpty) {
                               return 'Please enter a password';
                             }
                             if (value.length < 6) {
@@ -207,11 +206,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 16),
                         TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _isCreatingAccount = !_isCreatingAccount;
-                            });
-                          },
+                          onPressed: _loading
+                              ? null
+                              : () {
+                                  setState(() {
+                                    _isCreatingAccount = !_isCreatingAccount;
+                                  });
+                                },
                           child: Text(
                             _isCreatingAccount
                                 ? 'Already have an account? Sign in'
