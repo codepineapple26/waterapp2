@@ -3,12 +3,17 @@ import 'package:pocketbase/pocketbase.dart';
 
 import '../services/pocketbase_service.dart';
 
-class LoginScreen extends StatefulWidget {
+  class LoginScreen extends StatefulWidget {
   const LoginScreen({
     super.key,
-    required this.service,
     required this.onLoginSuccess,
   });
+
+  final VoidCallback onLoginSuccess;
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
 
   final PocketBaseService service;
   final VoidCallback onLoginSuccess;
