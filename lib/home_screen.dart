@@ -109,7 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final isPlacingOrder = selectedPlace != null;
 
     return Scaffold(
-      appBar: AppBar(
+     appBar: AppBar(
   title: Text(isPlacingOrder ? 'Place Order' : 'Dashboard'),
   actions: [
     if (!isPlacingOrder)
@@ -118,13 +118,14 @@ class _HomeScreenState extends State<HomeScreen> {
         onPressed: _refreshOrders,
         icon: const Icon(Icons.refresh),
       ),
-    IconButton(
-      tooltip: 'Sign Out',
-      icon: const Icon(Icons.logout),
+    TextButton.icon(
       onPressed: _showSignOutDialog,
+      icon: const Icon(Icons.logout),
+      label: const Text('Sign out'),
     ),
   ],
 ),
+
 
       body: isPlacingOrder
           ? const CreateOrderScreen()
