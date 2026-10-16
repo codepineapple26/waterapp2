@@ -30,6 +30,11 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
+      - name: Verify dashboard edit
+        run: |
+          echo "Building commit: $GITHUB_SHA"
+          grep -n "Dashboard TEST" lib/screens/dashboard_screen.dart
+
       # Compiles the APK bypassing validation mismatch blocks directly
       - name: Build Production APK
         run: flutter build apk --release --android-skip-build-dependency-validation
