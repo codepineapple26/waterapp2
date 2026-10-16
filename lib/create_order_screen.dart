@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:waterapp2/services/pocketbase_service.dart';
-import 'widgets/delivery_schedule_picker.dart';
 
 class CreateOrderScreen extends StatefulWidget {
   final bool allowSubmit;
@@ -23,7 +22,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   final _quantityController = TextEditingController(text: '1');
   final _notesController = TextEditingController();
 
-  DeliverySchedule? _deliverySchedule;
+  DateTime? _deliveryDate;
 
   bool _isLoading = false;
   bool _isPriceLoading = true;
@@ -112,6 +111,21 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
   }
 
+  Future<void> _pickDeliveryDate() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _deliveryDate ?? today,
+      firstDate: today,
+      lastDate: DateTime(today.year + 1),
+    );
+
+    if (pickedDate != null) {
+      setState(() => _deliveryDate = pickedDate);
+    }
+  }
+
   void _showMessage(String message) {
     setState(() => _statusMessage = message);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -181,7 +195,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
     final address = _addressController.text.trim();
     final phone = _phoneController.text.trim();
-    final schedule = _deliverySchedule;
+    final deliveryDate = _deliveryDate;
     final quantity = _quantity;
 
     if (address.isEmpty) {
@@ -196,8 +210,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _showMessage('Quantity must be at least 1.');
       return;
     }
-    if (schedule == null) {
-      _showMessage('Please choose a delivery date and time.');
+    if (deliveryDate == null) {
+      _showMessage('Please choose a delivery date.');
       return;
     }
 
@@ -212,7 +226,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         phone: phone,
         quantity: quantity,
         notes: _notesController.text.trim(),
-        deliverySchedule: schedule.toJson(),
+        deliverySchedule: {
+          'date': deliveryDate.toIso8601String().split('T').first,
+        },
       );
 
       if (!mounted) return;
@@ -222,7 +238,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         _statusMessage = message;
         _quantityController.text = '1';
         _notesController.clear();
-        _deliverySchedule = null;
+        _deliveryDate = null;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -250,7 +266,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final address = _addressController.text.trim();
     final phone = _phoneController.text.trim();
     final quantity = _quantity;
-    final schedule = _deliverySchedule;
+    final deliveryDate = _deliveryDate;
 
     final service = PocketBaseService();
     if (!service.isLoggedIn || service.currentUser == null) {
@@ -270,8 +286,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       return;
     }
 
-    if (schedule == null) {
-      _showMessage('Please choose a delivery date and time.');
+    if (deliveryDate == null) {
+      _showMessage('Please choose a delivery date.');
       return;
     }
 
@@ -312,9 +328,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             Text('Total: ₹${total.toStringAsFixed(2)}'),
             Text(
               'Delivery date: '
-              '${MaterialLocalizations.of(dialogContext).formatMediumDate(schedule.date)}',
+              '${MaterialLocalizations.of(dialogContext).formatMediumDate(deliveryDate)}',
             ),
-            Text('Delivery window: ${schedule.slot.label}'),
             if (_notesController.text.trim().isNotEmpty) ...[
               const SizedBox(height: 8),
               const Text('Notes:'),
@@ -418,14 +433,16 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
             const SizedBox(height: 16),
-
-            // Customer selects the requested delivery date and time.
-            DeliverySchedulePicker(
-              onChanged: (schedule) {
-                setState(() => _deliverySchedule = schedule);
-              },
+            OutlinedButton.icon(
+              onPressed: widget.allowSubmit ? _pickDeliveryDate : null,
+              icon: const Icon(Icons.calendar_today),
+              label: Text(
+                _deliveryDate == null
+                    ? 'Choose delivery date'
+                    : 'Delivery date: '
+                        '${MaterialLocalizations.of(context).formatMediumDate(_deliveryDate!)}',
+              ),
             ),
-
             const SizedBox(height: 16),
             TextField(
               controller: _quantityController,
