@@ -26,13 +26,19 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   DeliverySchedule? _deliverySchedule;
 
   bool _isLoading = false;
+  bool _isPriceLoading = true;
+  double? _pricePerBottle;
+  String? _priceError;
   String _statusMessage = '';
+
+  int get _quantity => int.tryParse(_quantityController.text.trim()) ?? 0;
 
   @override
   void initState() {
     super.initState();
     _loadBackendUserData();
     _applyInitialValues(widget.initialValues);
+    _loadPricePerBottle();
   }
 
   @override
@@ -41,6 +47,32 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
     if (oldWidget.initialValues != widget.initialValues) {
       _applyInitialValues(widget.initialValues);
+    }
+  }
+
+  Future<void> _loadPricePerBottle({bool showLoading = false}) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _isPriceLoading = true;
+        _priceError = null;
+      });
+    }
+
+    try {
+      final price = await PocketBaseService().getPricePerBottle();
+
+      if (!mounted) return;
+      setState(() {
+        _pricePerBottle = price;
+        _priceError = null;
+        _isPriceLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _priceError = error.toString();
+        _isPriceLoading = false;
+      });
     }
   }
 
@@ -87,6 +119,56 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     );
   }
 
+  Widget _buildPriceSummary() {
+    if (_isPriceLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_pricePerBottle == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Could not load bottle price${_priceError == null ? '.' : ': $_priceError'}',
+            style: const TextStyle(color: Colors.red),
+          ),
+          TextButton(
+            onPressed: () => _loadPricePerBottle(showLoading: true),
+            child: const Text('Retry'),
+          ),
+        ],
+      );
+    }
+
+    final total = _quantity > 0 ? _quantity * _pricePerBottle! : 0.0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blueGrey.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Price per bottle: ₹${_pricePerBottle!.toStringAsFixed(2)}',
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Total: ₹${total.toStringAsFixed(2)}',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submitOrder() async {
     if (!widget.allowSubmit) return;
 
@@ -100,6 +182,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     final address = _addressController.text.trim();
     final phone = _phoneController.text.trim();
     final schedule = _deliverySchedule;
+    final quantity = _quantity;
 
     if (address.isEmpty) {
       _showMessage('Delivery address cannot be blank.');
@@ -107,6 +190,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
     if (phone.isEmpty) {
       _showMessage('Contact phone number cannot be blank.');
+      return;
+    }
+    if (quantity < 1) {
+      _showMessage('Quantity must be at least 1.');
       return;
     }
     if (schedule == null) {
@@ -120,8 +207,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     });
 
     try {
-      final quantity = int.tryParse(_quantityController.text) ?? 1;
-
       await service.createDemoOrder(
         address: address,
         phone: phone,
@@ -133,14 +218,16 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       if (!mounted) return;
 
       const message = 'Order placed successfully!';
-      setState(() => _statusMessage = message);
+      setState(() {
+        _statusMessage = message;
+        _quantityController.text = '1';
+        _notesController.clear();
+        _deliverySchedule = null;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text(message)),
       );
-
-      _quantityController.text = '1';
-      _notesController.clear();
-      setState(() => _deliverySchedule = null);
     } catch (error, st) {
       if (!mounted) return;
 
@@ -162,8 +249,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
     final address = _addressController.text.trim();
     final phone = _phoneController.text.trim();
-    final quantity = int.tryParse(_quantityController.text) ?? 1;
-    final total = quantity * 5.0;
+    final quantity = _quantity;
     final schedule = _deliverySchedule;
 
     final service = PocketBaseService();
@@ -179,10 +265,34 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       return;
     }
 
+    if (quantity < 1) {
+      _showMessage('Quantity must be at least 1.');
+      return;
+    }
+
     if (schedule == null) {
       _showMessage('Please choose a delivery date and time.');
       return;
     }
+
+    // Fetch a fresh price for the confirmation dialog.
+    double pricePerBottle;
+    try {
+      pricePerBottle = await service.getPricePerBottle();
+
+      if (!mounted) return;
+      setState(() {
+        _pricePerBottle = pricePerBottle;
+        _priceError = null;
+        _isPriceLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      _showMessage('Could not load bottle price: $error');
+      return;
+    }
+
+    final total = quantity * pricePerBottle;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -196,6 +306,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             Text('Phone: $phone'),
             Text('Address: $address'),
             Text('Quantity: $quantity'),
+            Text(
+              'Price per bottle: ₹${pricePerBottle.toStringAsFixed(2)}',
+            ),
             Text('Total: ₹${total.toStringAsFixed(2)}'),
             Text(
               'Delivery date: '
@@ -322,7 +435,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               ),
               keyboardType: TextInputType.number,
               readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
+              onChanged: (_) => setState(() {}),
             ),
+            const SizedBox(height: 12),
+            _buildPriceSummary(),
             const SizedBox(height: 16),
             TextField(
               controller: _notesController,
@@ -337,8 +453,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : ElevatedButton(
-                    onPressed:
-                        widget.allowSubmit ? _confirmAndSubmit : null,
+                    onPressed: widget.allowSubmit ? _confirmAndSubmit : null,
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(50),
                     ),
