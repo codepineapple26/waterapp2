@@ -7,8 +7,19 @@ void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool _isLoggedIn = pb.authStore.isValid;
+
+  void _handleLoginSuccess() {
+    setState(() => _isLoggedIn = true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,9 +30,9 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: pb.authStore.isValid
+      home: _isLoggedIn
           ? const HomeScreen()
-          : const LoginScreen(),
+          : LoginScreen(onLoginSuccess: _handleLoginSuccess),
     );
   }
 }
@@ -34,87 +45,198 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Customers land on View Orders. Drivers have only the View Orders tab.
-  int _currentIndex = 1;
+  int _currentIndex = 0;
   int _ordersVersion = 0;
-  int _formVersion = 0;
 
+  bool _showOrderForm = false;
+  String? _selectedPlaceId;
   Map<String, dynamic>? _reorderDraft;
+
+  late final Future<List<dynamic>> _placesFuture;
 
   bool get _isDriver =>
       pb.authStore.model?.getStringValue('role') == 'driver';
 
+  @override
+  void initState() {
+    super.initState();
+
+    // Change 'delivery_places' if your PocketBase collection has another name.
+    _placesFuture = pb.collection('delivery_places').getFullList(sort: 'name');
+  }
+
   void _handleReorder(Map<String, dynamic> draft) {
     if (_isDriver) return;
 
+    // A customer must still choose a delivery place before the form opens.
     setState(() {
       _reorderDraft = draft;
       _currentIndex = 0;
-      _formVersion++;
+      _showOrderForm = false;
+    });
+  }
+
+  void _openOrderForm(dynamic place) {
+    setState(() {
+      _selectedPlaceId = place.id;
+      _showOrderForm = true;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final orderList = ViewOrdersListScreen(
-      key: ValueKey('orders-$_ordersVersion'),
-      onReorder: _handleReorder,
-    );
+    if (_isDriver) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Orders')),
+        body: ViewOrdersListScreen(
+          key: ValueKey('driver-orders-$_ordersVersion'),
+          onReorder: _handleReorder,
+        ),
+      );
+    }
 
-    final pages = _isDriver
-        ? <Widget>[orderList]
-        : <Widget>[
-            CreateOrderScreen(
-              key: ValueKey('create-order-$_formVersion'),
-              allowSubmit: true,
-              initialValues: _reorderDraft,
-            ),
-            orderList,
-          ];
+    if (_showOrderForm && _selectedPlaceId != null) {
+      return _buildOrderForm();
+    }
 
     return Scaffold(
-      body: IndexedStack(
-        index: _isDriver ? 0 : _currentIndex,
-        children: pages,
+      appBar: AppBar(
+        title: Text(_currentIndex == 0 ? 'Dashboard' : 'My Orders'),
       ),
+      body: _currentIndex == 0
+          ? _buildDashboard()
+          : ViewOrdersListScreen(
+              key: ValueKey('orders-$_ordersVersion'),
+              onReorder: _handleReorder,
+            ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _isDriver ? 0 : _currentIndex,
+        currentIndex: _currentIndex,
         onTap: (index) {
-          if (_isDriver) return;
-
           setState(() {
             _currentIndex = index;
+            _showOrderForm = false;
 
-            // Recreate the list when the customer switches to View Orders.
             if (index == 1) {
               _ordersVersion++;
             }
           });
         },
-        items: _isDriver
-            ? const [
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.list_alt),
-                  label: 'View Orders',
-                ),
-              ]
-            : const [
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.add_shopping_cart),
-                  label: 'Place Order',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.list_alt),
-                  label: 'View Orders',
-                ),
-              ],
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard_outlined),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.list_alt),
+            label: 'My Orders',
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildOrderForm() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Place Order'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => setState(() => _showOrderForm = false),
+        ),
+      ),
+      body: CreateOrderScreen(
+        key: ValueKey('create-order-$_selectedPlaceId'),
+        allowSubmit: true,
+        initialValues: {
+          ...?_reorderDraft,
+
+          // These keys must match what CreateOrderScreen reads and saves.
+          'delivery_place_id': _selectedPlaceId,
+        },
+      ),
+    );
+  }
+
+  Widget _buildDashboard() {
+    return FutureBuilder<List<dynamic>>(
+      future: _placesFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text('Could not load delivery places: ${snapshot.error}'),
+            ),
+          );
+        }
+
+        final places = snapshot.data ?? [];
+
+        if (places.isEmpty) {
+          return const Center(
+            child: Text('No delivery places are available.'),
+          );
+        }
+
+        final selectedPlace = places.cast<dynamic>().where((place) {
+          return place.id == _selectedPlaceId;
+        }).firstOrNull;
+
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Text(
+              'Welcome',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 8),
+            const Text('Choose a delivery place to start an order.'),
+            const SizedBox(height: 24),
+            DropdownButtonFormField<String>(
+              value: _selectedPlaceId,
+              decoration: const InputDecoration(
+                labelText: 'Delivery place',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.location_on_outlined),
+              ),
+              items: places.map<DropdownMenuItem<String>>((place) {
+                // Change 'name' if your place-name field has another name.
+                final placeName = place.getStringValue('name');
+                return DropdownMenuItem<String>(
+                  value: place.id as String,
+                  child: Text(placeName),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() => _selectedPlaceId = value);
+              },
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: selectedPlace == null
+                  ? null
+                  : () => _openOrderForm(selectedPlace),
+              icon: const Icon(Icons.shopping_cart_outlined),
+              label: const Text('Continue to order'),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({
+    super.key,
+    required this.onLoginSuccess,
+  });
+
+  final VoidCallback onLoginSuccess;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -148,11 +270,7 @@ class _LoginScreenState extends State<LoginScreen> {
           );
 
       if (authData.token.isNotEmpty && mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const HomeScreen(),
-          ),
-        );
+        widget.onLoginSuccess();
       }
     } catch (e, st) {
       debugPrint('Login error: $e\n$st');
@@ -165,9 +283,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -189,19 +305,12 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(
-                Icons.water_drop,
-                size: 80,
-                color: Colors.blue,
-              ),
+              const Icon(Icons.water_drop, size: 80, color: Colors.blue),
               const SizedBox(height: 16),
               const Text(
                 'Water Delivery Login',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 32),
               TextField(
@@ -232,20 +341,17 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: const Text('Sign In'),
                     ),
               const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const SignupScreen(),
-                        ),
-                      );
-                    },
-                    child: const Text('Create an account'),
-                  ),
-                ],
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => SignupScreen(
+                        onLoginSuccess: widget.onLoginSuccess,
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('Create an account'),
               ),
               if (_errorMessage.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -267,7 +373,12 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 class SignupScreen extends StatefulWidget {
-  const SignupScreen({super.key});
+  const SignupScreen({
+    super.key,
+    required this.onLoginSuccess,
+  });
+
+  final VoidCallback onLoginSuccess;
 
   @override
   State<SignupScreen> createState() => _SignupScreenState();
@@ -289,16 +400,12 @@ class _SignupScreenState extends State<SignupScreen> {
     final confirm = _confirmPasswordController.text;
 
     if (name.isEmpty || email.isEmpty || password.isEmpty || confirm.isEmpty) {
-      setState(() {
-        _errorMessage = 'Please fill all fields.';
-      });
+      setState(() => _errorMessage = 'Please fill all fields.');
       return;
     }
 
     if (password != confirm) {
-      setState(() {
-        _errorMessage = 'Passwords do not match.';
-      });
+      setState(() => _errorMessage = 'Passwords do not match.');
       return;
     }
 
@@ -308,35 +415,30 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     try {
-      final record = await PocketBaseService().signUp(
+      await PocketBaseService().signUp(
         email: email,
         password: password,
         name: name,
       );
 
-      debugPrint('Signup success: ${record.id}');
+      // Ensure the shared PocketBase client is authenticated after signup.
+      if (!pb.authStore.isValid) {
+        await pb.collection('users').authWithPassword(email, password);
+      }
 
       if (!mounted) return;
 
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (context) => const HomeScreen(),
-        ),
-        (route) => false,
-      );
+      widget.onLoginSuccess();
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e, st) {
       debugPrint('Signup error: $e\n$st');
 
       if (mounted) {
-        setState(() {
-          _errorMessage = 'Signup failed: $e';
-        });
+        setState(() => _errorMessage = 'Signup failed: $e');
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
