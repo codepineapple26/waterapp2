@@ -28,7 +28,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   final _phoneController = TextEditingController();
   final _quantityController = TextEditingController();
   final _notesController = TextEditingController();
+  final _amountPaidController = TextEditingController();
+
   String _status = 'New';
+  String? _deliveryDate;
 
   static const List<String> statuses = [
     'New',
@@ -50,15 +53,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       final r = await widget.service.fetchOrderById(widget.orderId);
       _order = r;
       final data = r.data ?? <String, dynamic>{};
+
       _addressController.text = data['address']?.toString() ?? '';
       _phoneController.text = data['phone']?.toString() ?? '';
-      _quantityController.text = (data['quantity']?.toString() ?? '1');
+      _quantityController.text = data['quantity']?.toString() ?? '1';
       _notesController.text = data['notes']?.toString() ?? '';
+      _amountPaidController.text = data['amount_paid']?.toString() ?? '0';
       _status = data['status']?.toString() ?? 'New';
+      _deliveryDate = data['delivery_date']?.toString();
     } catch (err) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load order: ${err.toString()}')),
+          SnackBar(content: Text('Failed to load order: $err')),
         );
         Navigator.of(context).pop();
       }
@@ -67,19 +73,33 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
   }
 
+  String _formatDate(String? raw) {
+    if (raw == null || raw.isEmpty) return 'Not delivered yet';
+    final date = DateTime.tryParse(raw);
+    if (date == null) return raw;
+    final local = date.toLocal();
+    return '${local.year}-${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')} '
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+  }
+
   String _formatCreated(RecordModel r) {
     final createdRaw = (r.created ?? r.data?['created'])?.toString();
     if (createdRaw == null) return '';
-    try {
-      final dt = DateTime.parse(createdRaw).toLocal();
-      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return createdRaw;
-    }
+    return _formatDate(createdRaw);
   }
 
   Future<void> _saveChanges() async {
     if (!_formKey.currentState!.validate()) return;
+
+    final amountPaid = double.tryParse(_amountPaidController.text.trim());
+    if (amountPaid == null || amountPaid < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid amount paid.')),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
 
@@ -91,6 +111,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         quantity: int.parse(_quantityController.text.trim()),
         notes: _notesController.text.trim(),
       );
+
+      final body = <String, dynamic>{
+        'amount_paid': amountPaid,
+      };
+
+      if (_status.toLowerCase() == 'delivered' &&
+          (_deliveryDate == null || _deliveryDate!.isEmpty)) {
+        body['delivery_date'] = DateTime.now().toUtc().toIso8601String();
+      }
+
+      await widget.service.updateOrderFields(widget.orderId, body);
 
       if ((_order?.data?['status']?.toString() ?? '') != _status) {
         await widget.service.updateOrderStatus(widget.orderId, _status);
@@ -105,7 +136,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     } catch (err) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update: ${err.toString()}')),
+          SnackBar(content: Text('Failed to update: $err')),
         );
       }
     } finally {
@@ -119,7 +150,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Delete order?'),
         content: const Text(
-            'This will permanently delete the order. Are you sure?'),
+          'This will permanently delete the order. Are you sure?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -136,10 +168,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (ok != true) return;
 
     setState(() => _deleting = true);
-
     try {
       await widget.service.deleteOrder(widget.orderId);
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Order deleted')),
@@ -149,7 +179,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     } catch (err) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete: ${err.toString()}')),
+          SnackBar(content: Text('Failed to delete: $err')),
         );
       }
     } finally {
@@ -163,15 +193,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     _phoneController.dispose();
     _quantityController.dispose();
     _notesController.dispose();
+    _amountPaidController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final order = _order;
-    final total = (order?.data?['total'] is num)
-        ? (order!.data!['total'] as num).toDouble()
-        : double.tryParse(order?.data?['total']?.toString() ?? '') ?? 0.0;
+    final totalValue = order?.data?['total'];
+    final total = totalValue is num
+        ? totalValue.toDouble()
+        : double.tryParse(totalValue?.toString() ?? '') ?? 0.0;
 
     return Scaffold(
       appBar: AppBar(
@@ -200,14 +232,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text('Created: ${_formatCreated(order)}'),
+                      const SizedBox(height: 8),
+                      Text('Delivery date: ${_formatDate(_deliveryDate)}'),
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _addressController,
                         decoration: const InputDecoration(labelText: 'Address'),
                         validator: (v) =>
-                            (v == null || v.trim().isEmpty)
-                                ? 'Enter address'
-                                : null,
+                            v == null || v.trim().isEmpty ? 'Enter address' : null,
                       ),
                       const SizedBox(height: 8),
                       TextFormField(
@@ -215,9 +247,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         decoration: const InputDecoration(labelText: 'Phone'),
                         keyboardType: TextInputType.phone,
                         validator: (v) =>
-                            (v == null || v.trim().isEmpty)
-                                ? 'Enter phone'
-                                : null,
+                            v == null || v.trim().isEmpty ? 'Enter phone' : null,
                       ),
                       const SizedBox(height: 8),
                       TextFormField(
@@ -225,14 +255,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         decoration: const InputDecoration(labelText: 'Quantity'),
                         keyboardType: TextInputType.number,
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) {
-                            return 'Enter quantity';
-                          }
-                          final n = int.tryParse(v.trim());
-                          if (n == null || n <= 0) {
-                            return 'Quantity must be > 0';
-                          }
-                          return null;
+                          final n = int.tryParse(v?.trim() ?? '');
+                          return n == null || n <= 0
+                              ? 'Quantity must be greater than 0'
+                              : null;
                         },
                       ),
                       const SizedBox(height: 8),
@@ -240,6 +266,23 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         controller: _notesController,
                         decoration: const InputDecoration(labelText: 'Notes'),
                         maxLines: 3,
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _amountPaidController,
+                        decoration: const InputDecoration(
+                          labelText: 'Amount paid',
+                          prefixText: '\$',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        validator: (v) {
+                          final value = double.tryParse(v?.trim() ?? '');
+                          return value == null || value < 0
+                              ? 'Enter a valid amount'
+                              : null;
+                        },
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -250,14 +293,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           ),
                           const SizedBox(width: 12),
                           DropdownButton<String>(
-                            value: _status,
+                            value: statuses.contains(_status) ? _status : 'New',
                             items: statuses
-                                .map((s) =>
-                                    DropdownMenuItem(value: s, child: Text(s)))
+                                .map((s) => DropdownMenuItem(
+                                      value: s,
+                                      child: Text(s),
+                                    ))
                                 .toList(),
                             onChanged: (v) {
-                              if (v == null) return;
-                              setState(() => _status = v);
+                              if (v != null) setState(() => _status = v);
                             },
                           ),
                         ],
@@ -277,7 +321,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                       width: 16,
                                       height: 16,
                                       child: CircularProgressIndicator(
-                                          strokeWidth: 2),
+                                        strokeWidth: 2,
+                                      ),
                                     )
                                   : const Icon(Icons.save),
                               label: const Text('Save changes'),
