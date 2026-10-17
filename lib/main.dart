@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:waterapp2/services/pocketbase_service.dart';
 import 'package:waterapp2/create_order_screen.dart';
 import 'package:waterapp2/view_orders_list_screen.dart';
+import 'customer_registration_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
