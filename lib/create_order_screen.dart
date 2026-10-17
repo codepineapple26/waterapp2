@@ -240,7 +240,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: DropdownButtonFormField<RecordModel>(
-        value: _selectedCustomer,
+        initialValue: _selectedCustomer,
         isExpanded: true,
         decoration: const InputDecoration(
           labelText: 'Select customer',
