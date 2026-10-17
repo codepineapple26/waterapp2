@@ -457,6 +457,45 @@ class PocketBaseService {
       },
     );
   }
+  Future<RecordModel> registerCustomerFromDriver({
+  required PocketBase pb,
+  required String name,
+  required String email,
+  required String password,
+  required String phone,
+  required String ward,
+  required String road,
+  required String houseNumber,
+  String landmark = '',
+}) async {
+  final driver = pb.authStore.record;
+
+  if (driver == null || driver.data['role'] != 'driver') {
+    throw Exception('Only a logged-in driver can register a customer.');
+  }
+
+  final address = [
+    ward,
+    road,
+    if (houseNumber.trim().isNotEmpty) houseNumber.trim(),
+    if (landmark.trim().isNotEmpty) landmark.trim(),
+  ].join(', ');
+
+  return pb.collection('users').create(body: {
+    'name': name.trim(),
+    'email': email.trim(),
+    'password': password,
+    'passwordConfirm': password,
+    'phone': phone.trim(),
+    'role': 'customer',
+    'ward': ward,
+    'road': road,
+    'house_number': houseNumber.trim(),
+    'landmark': landmark.trim(),
+    'address': address, // Keeps the existing text address field populated.
+    'created_by': driver.id,
+  });
+}
 
   Future<void> deleteOrder(String id) async {
     await pb.collection('orders').delete(id);
