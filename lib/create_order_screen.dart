@@ -325,7 +325,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       _showMessage('Please select a customer.');
       return;
     }
+// Add this after the validation checks:
+final customerId = _isDriver ? _selectedCustomer!.id : user.id;
 
+final orderData = {
+  // Move the fields from your existing order body here.
+  'user_id': customerId,
+  if (_isDriver) 'driver_id': user.id,
+};
+    
     final address = _addressController.text.trim();
     final phone = _phoneController.text.trim();
     final quantity = _quantity;
@@ -381,7 +389,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         }),
       };
 
-      await _service.client.collection('orders').create(body: body);
+      await _service.client.collection('orders').create(body: orderData);
+
 
       if (!mounted) return;
 
