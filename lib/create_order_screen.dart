@@ -354,7 +354,6 @@ setState(() {
   _isLoading = true;
   _statusMessage = '';
 });
-
 try {
   final customer = _isDriver ? _selectedCustomer! : user;
   final customerName = _nameController.text.trim().isNotEmpty
@@ -378,42 +377,32 @@ try {
     'delivery_schedule': deliveryDate.toIso8601String().split('T').first,
   };
 
-  // Submit the complete body—not the old orderData map.
   await _service.client.collection('orders').create(body: body);
 
-  // Keep your existing success handling here.
-} catch (e) {
-  _showMessage('Could not place order: $e');
+  if (!mounted) return;
+
+  setState(() {
+    _statusMessage = 'Order placed successfully!';
+    _quantityController.text = '1';
+    _notesController.clear();
+    _deliveryDate = null;
+  });
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Order placed successfully!')),
+  );
+} catch (error, stackTrace) {
+  if (!mounted) return;
+
+  _showMessage('Submission failed: $error');
+  // ignore: avoid_print
+  print('Order submit error: $error\n$stackTrace');
 } finally {
   if (mounted) {
     setState(() => _isLoading = false);
   }
 }
 
-
-
-      if (!mounted) return;
-
-      setState(() {
-        _statusMessage = 'Order placed successfully!';
-        _quantityController.text = '1';
-        _notesController.clear();
-        _deliveryDate = null;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Order placed successfully!')),
-      );
-    } catch (error, stackTrace) {
-      if (!mounted) return;
-
-      _showMessage('Submission failed: $error');
-      // ignore: avoid_print
-      print('Order submit error: $error\n$stackTrace');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
 
   Future<void> _confirmAndSubmit() async {
     if (!widget.allowSubmit) return;
@@ -532,7 +521,7 @@ try {
               label: Text(
                 _deliveryDate == null
                     ? 'Expected delivery date'
-                    : 'Delivery date: '
+                    : 'Expected delivery date: '
                         '${MaterialLocalizations.of(context).formatMediumDate(_deliveryDate!)}',
               ),
             ),
