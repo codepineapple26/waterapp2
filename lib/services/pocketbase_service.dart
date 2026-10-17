@@ -202,13 +202,216 @@ class PocketBaseService {
     );
   }
 
-  /// Confirms delivery for the signed-in customer.
+  // ---------------------------------------------------------------------------
+  // Partial delivery methods
+  // ---------------------------------------------------------------------------
+
+  /// Returns all delivery records for an order.
+  Future<List<RecordModel>> getOrderDeliveries(String orderId) async {
+    return pb.collection('order_deliveries').getFullList(
+          filter: 'order = "$orderId"',
+          sort: 'created',
+        );
+  }
+
+  /// Returns bottles that have not yet been delivered or reserved by a request.
   ///
-  /// Assumes:
-  /// - `customer_confirmation` is a boolean field.
-  /// - `confirmed_at` is a PocketBase date field.
-  /// - The delivered order status is `Delivered`.
-  Future<RecordModel> confirmCustomerDelivery(String orderId) async {
+  /// Requested and out-for-delivery records count as reserved, so a customer
+  /// cannot request the same remaining bottles twice.
+  Future<int> getAvailableDeliveryQuantity(String orderId) async {
+    final order = await fetchOrderById(orderId);
+    final deliveries = await getOrderDeliveries(orderId);
+
+    final reservedQuantity = deliveries.fold<int>(0, (sum, delivery) {
+      final status =
+          delivery.data['status']?.toString().toLowerCase() ?? '';
+
+      if (status == 'cancelled') return sum;
+
+      return sum + delivery.getIntValue('quantity');
+    });
+
+    final totalQuantity = order.getIntValue('quantity');
+    final available = totalQuantity - reservedQuantity;
+
+    return available > 0 ? available : 0;
+  }
+
+  /// Creates a delivery request for the signed-in customer.
+  ///
+  /// The order's amount_paid and total are not changed.
+  Future<RecordModel> requestDelivery({
+    required String orderId,
+    required int quantity,
+    DateTime? requestedFor,
+  }) async {
+    final user = currentUser;
+
+    if (user == null) {
+      throw StateError('You must be logged in to request a delivery.');
+    }
+
+    if (user.data['role']?.toString() != 'customer') {
+      throw StateError('Only customers can request deliveries.');
+    }
+
+    if (quantity <= 0) {
+      throw ArgumentError('Delivery quantity must be greater than zero.');
+    }
+
+    final order = await fetchOrderById(orderId);
+
+    if (order.data['user_id']?.toString() != user.id) {
+      throw StateError('You can only request deliveries for your own order.');
+    }
+
+    final available = await getAvailableDeliveryQuantity(orderId);
+
+    if (quantity > available) {
+      throw StateError(
+        'You requested $quantity bottles, but only $available are available.',
+      );
+    }
+
+    return pb.collection('order_deliveries').create(
+      body: {
+        'order': orderId,
+        'quantity': quantity,
+        'status': 'requested',
+        'customer_confirmation': false,
+        if (requestedFor != null)
+          'requested_for': requestedFor.toUtc().toIso8601String(),
+      },
+    );
+  }
+
+  /// Loads a delivery and verifies that the signed-in driver is assigned
+  /// to its parent order.
+  Future<RecordModel> _getDeliveryForAssignedDriver(
+    String deliveryId,
+  ) async {
+    final user = currentUser;
+
+    if (user == null) {
+      throw StateError('You must be logged in.');
+    }
+
+    if (user.data['role']?.toString() != 'driver') {
+      throw StateError('Only drivers can update deliveries.');
+    }
+
+    final delivery =
+        await pb.collection('order_deliveries').getOne(deliveryId);
+    final orderId = delivery.data['order']?.toString();
+
+    if (orderId == null || orderId.isEmpty) {
+      throw StateError('This delivery is not linked to an order.');
+    }
+
+    final order = await fetchOrderById(orderId);
+
+    if (order.data['driver_id']?.toString() != user.id) {
+      throw StateError('This order is not assigned to you.');
+    }
+
+    final assignedDeliveryDriver = delivery.data['driver']?.toString();
+    if (assignedDeliveryDriver != null &&
+        assignedDeliveryDriver.isNotEmpty &&
+        assignedDeliveryDriver != user.id) {
+      throw StateError('This delivery is assigned to another driver.');
+    }
+
+    return delivery;
+  }
+
+  /// Starts a requested delivery for the assigned driver.
+  Future<RecordModel> startDelivery(String deliveryId) async {
+    final user = currentUser;
+    if (user == null) throw StateError('You must be logged in.');
+
+    final delivery = await _getDeliveryForAssignedDriver(deliveryId);
+    final status =
+        delivery.data['status']?.toString().toLowerCase() ?? '';
+
+    if (status != 'requested') {
+      throw StateError('Only requested deliveries can be started.');
+    }
+
+    return pb.collection('order_deliveries').update(
+      deliveryId,
+      body: {
+        'status': 'out_for_delivery',
+        'driver': user.id,
+      },
+    );
+  }
+
+  /// Marks one partial delivery delivered.
+  ///
+  /// The parent order is marked Delivered only when its full quantity has
+  /// been delivered.
+  Future<RecordModel> markDeliveryDelivered(String deliveryId) async {
+    final delivery = await _getDeliveryForAssignedDriver(deliveryId);
+    final status =
+        delivery.data['status']?.toString().toLowerCase() ?? '';
+
+    if (status != 'out_for_delivery') {
+      throw StateError(
+        'Only a delivery that is out for delivery can be marked delivered.',
+      );
+    }
+
+    final updatedDelivery =
+        await pb.collection('order_deliveries').update(
+      deliveryId,
+      body: {
+        'status': 'delivered',
+        'delivered_at': DateTime.now().toUtc().toIso8601String(),
+      },
+    );
+
+    final orderId = delivery.data['order'].toString();
+    final order = await fetchOrderById(orderId);
+    final deliveries = await getOrderDeliveries(orderId);
+
+    final deliveredQuantity = deliveries.fold<int>(0, (sum, item) {
+      final itemStatus =
+          item.data['status']?.toString().toLowerCase() ?? '';
+
+      if (itemStatus != 'delivered') return sum;
+
+      return sum + item.getIntValue('quantity');
+    });
+
+    final totalQuantity = order.getIntValue('quantity');
+
+    if (deliveredQuantity >= totalQuantity) {
+      await pb.collection('orders').update(
+        orderId,
+        body: {'status': 'Delivered'},
+      );
+    } else {
+      final anotherDeliveryIsInTransit = deliveries.any((item) {
+        return item.data['status']?.toString().toLowerCase() ==
+            'out_for_delivery';
+      });
+
+      await pb.collection('orders').update(
+        orderId,
+        body: {
+          'status':
+              anotherDeliveryIsInTransit ? 'Out for delivery' : 'Accepted',
+        },
+      );
+    }
+
+    return updatedDelivery;
+  }
+
+  /// Confirms a delivered delivery record for its owning customer.
+  ///
+  /// Pass an `order_deliveries` record ID—not the parent order ID.
+  Future<RecordModel> confirmCustomerDelivery(String deliveryId) async {
     final user = currentUser;
 
     if (user == null) {
@@ -219,23 +422,35 @@ class PocketBaseService {
       throw StateError('Only the customer can confirm delivery.');
     }
 
+    final delivery =
+        await pb.collection('order_deliveries').getOne(deliveryId);
+    final orderId = delivery.data['order']?.toString();
+
+    if (orderId == null || orderId.isEmpty) {
+      throw StateError('This delivery is not linked to an order.');
+    }
+
     final order = await fetchOrderById(orderId);
 
     if (order.data['user_id']?.toString() != user.id) {
-      throw StateError('You can only confirm delivery for your own order.');
+      throw StateError(
+        'You can only confirm deliveries for your own order.',
+      );
     }
 
-    final status = order.data['status']?.toString().toLowerCase();
+    final status =
+        delivery.data['status']?.toString().toLowerCase();
+
     if (status != 'delivered') {
-      throw StateError('The driver must mark the order delivered first.');
+      throw StateError('The driver must mark this delivery delivered first.');
     }
 
-    if (order.data['customer_confirmation'] == true) {
-      throw StateError('Delivery has already been confirmed.');
+    if (delivery.data['customer_confirmation'] == true) {
+      throw StateError('This delivery has already been confirmed.');
     }
 
-    return pb.collection('orders').update(
-      orderId,
+    return pb.collection('order_deliveries').update(
+      deliveryId,
       body: {
         'customer_confirmation': true,
         'confirmed_at': DateTime.now().toUtc().toIso8601String(),
