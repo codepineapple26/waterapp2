@@ -176,7 +176,8 @@ Future<void> _openCreateOrder() async {
           IconButton(
             tooltip: 'Create Order',
               icon: const Icon(Icons.add_shopping_cart),
-             onPressed: _openCreateOrder,
+            onPressed: () => _openOrderForm(),
+
         ),
 
         ],
