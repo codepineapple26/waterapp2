@@ -258,22 +258,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final list = _filteredOrders;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard TEST'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadOrders,
-            tooltip: 'Refresh',
-          ),
-          actions: [
-  TextButton.icon(
-    onPressed: widget.onLogout,
-    icon: const Icon(Icons.logout),
-    label: const Text('Sign out'),
-  ),
-],
+  title: const Text('Dashboard TEST'),
+  actions: [
+    IconButton(
+      icon: const Icon(Icons.refresh),
+      onPressed: _loadOrders,
+      tooltip: 'Refresh',
+    ),
+    TextButton.icon(
+      onPressed: widget.onLogout,
+      icon: const Icon(Icons.logout),
+      label: const Text('Sign out'),
+    ),
+  ],
+),
 
-      ),
       body: SafeArea(
         child: Column(
           children: [
