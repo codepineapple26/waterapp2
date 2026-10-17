@@ -206,7 +206,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_currentIndex == 0 ? 'Dashboard Main' : 'My Orders'),
+        title: Text(_currentIndex == 0 ? 'Dashboard Working' : 'My Orders'),
         leading: _currentIndex == 1
             ? IconButton(
                 tooltip: 'Back to dashboard',
@@ -222,8 +222,19 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _refreshOrders,
             icon: const Icon(Icons.refresh),
           ),
-        ],
-      ),
+
+      IconButton(
+  icon: const Icon(Icons.logout),
+  tooltip: 'Sign out',
+  onPressed: () {
+    pb.authStore.clear();
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      '/login', // Replace with your login route
+      (route) => false,
+    );
+  },
+),
+
       body: _currentIndex == 0
           ? _buildDashboard()
           : ViewOrdersListScreen(
