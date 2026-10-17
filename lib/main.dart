@@ -232,7 +232,7 @@ Future<double> _loadAccountBalance() async {
           title: const Text('Orders'),
           actions: [
             TextButton.icon(
-          onPressed: _openOrderForm,
+          onPressed: () => _openOrderForm(),
           icon: const Icon(Icons.add_shopping_cart),
           label: const Text('Place order'),
         ),
