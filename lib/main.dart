@@ -10,7 +10,6 @@ Future<void> main() async {
   runApp(const MyApp());
 }
 
-
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
@@ -25,6 +24,11 @@ class _MyAppState extends State<MyApp> {
     setState(() => _isLoggedIn = true);
   }
 
+  void _handleSignOut() {
+    pb.authStore.clear();
+    setState(() => _isLoggedIn = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -35,14 +39,19 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
       ),
       home: _isLoggedIn
-          ? const HomeScreen()
+          ? HomeScreen(onSignOut: _handleSignOut)
           : LoginScreen(onLoginSuccess: _handleLoginSuccess),
     );
   }
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    required this.onSignOut,
+  });
+
+  final VoidCallback onSignOut;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -56,6 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _reorderDraft;
 
   late Future<List<dynamic>> _ordersFuture;
+  late Future<double> _accountBalanceFuture;
 
   bool get _isDriver =>
       pb.authStore.model?.getStringValue('role') == 'driver';
@@ -64,6 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _ordersFuture = _loadOrders();
+    _accountBalanceFuture = _loadAccountBalance();
   }
 
   Future<List<dynamic>> _loadOrders() {
@@ -73,9 +84,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return Future.error(StateError('No authenticated user.'));
     }
 
-    final filter = _isDriver
-        ? 'driver_id = "$userId"'
-        : 'user_id = "$userId"';
+    final filter =
+        _isDriver ? 'driver_id = "$userId"' : 'user_id = "$userId"';
 
     return pb.collection('orders').getFullList(
           filter: filter,
@@ -83,9 +93,33 @@ class _HomeScreenState extends State<HomeScreen> {
         );
   }
 
+  Future<double> _loadAccountBalance() async {
+    final userId = pb.authStore.model?.id;
+
+    if (userId == null || userId.isEmpty) {
+      throw StateError('No authenticated user.');
+    }
+
+    final deposits = await pb.collection('deposits').getFullList(
+          filter: 'user_id = "$userId" && status = "approved"',
+          sort: '-created',
+        );
+
+    return deposits.fold<double>(0, (sum, deposit) {
+      final value = deposit.data['amount'];
+
+      if (value is num) {
+        return sum + value.toDouble();
+      }
+
+      return sum + (double.tryParse(value?.toString() ?? '') ?? 0);
+    });
+  }
+
   void _refreshOrders() {
     setState(() {
       _ordersFuture = _loadOrders();
+      _accountBalanceFuture = _loadAccountBalance();
       _ordersVersion++;
     });
   }
@@ -132,7 +166,6 @@ class _HomeScreenState extends State<HomeScreen> {
   double _amountPaid(dynamic order) {
     final data = order.data as Map<String, dynamic>;
 
-    // Use an explicit paid amount when the collection has one.
     for (final field in ['amount_paid', 'paid_amount']) {
       final value = data[field];
 
@@ -146,15 +179,11 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // Otherwise count the order total only when marked as paid.
     final paymentStatus =
         (data['payment_status'] ?? '').toString().toLowerCase().trim();
 
     if (paymentStatus == 'paid') {
-      return _numberFromOrder(
-        order,
-        ['total_amount', 'total_price', 'amount', 'price'],
-      );
+      return _numberFromOrder(order, ['total']);
     }
 
     return 0;
@@ -171,6 +200,11 @@ class _HomeScreenState extends State<HomeScreen> {
               tooltip: 'Refresh orders',
               onPressed: _refreshOrders,
               icon: const Icon(Icons.refresh),
+            ),
+            IconButton(
+              tooltip: 'Sign out',
+              onPressed: widget.onSignOut,
+              icon: const Icon(Icons.logout),
             ),
           ],
         ),
@@ -192,6 +226,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 _showOrderForm = false;
                 _reorderDraft = null;
                 _ordersFuture = _loadOrders();
+                _accountBalanceFuture = _loadAccountBalance();
+                _ordersVersion++;
               });
             },
           ),
@@ -205,39 +241,30 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
-  appBar: AppBar(
-    title: Text(_currentIndex == 0 ? 'Dashboard Working' : 'My Orders'),
-    leading: _currentIndex == 1
-        ? IconButton(
-            tooltip: 'Back to dashboard',
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              setState(() => _currentIndex = 0);
-            },
-          )
-        : null,
-    actions: [
-      IconButton(
-        tooltip: 'Refresh',
-        onPressed: _refreshOrders,
-        icon: const Icon(Icons.refresh),
+      appBar: AppBar(
+        title: Text(_currentIndex == 0 ? 'Dashboard Working' : 'My Orders'),
+        leading: _currentIndex == 1
+            ? IconButton(
+                tooltip: 'Back to dashboard',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  setState(() => _currentIndex = 0);
+                },
+              )
+            : null,
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _refreshOrders,
+            icon: const Icon(Icons.refresh),
+          ),
+          IconButton(
+            tooltip: 'Sign out',
+            onPressed: widget.onSignOut,
+            icon: const Icon(Icons.logout),
+          ),
+        ],
       ),
-      IconButton(
-        icon: const Icon(Icons.logout),
-        tooltip: 'Sign out',
-        onPressed: () {
-          pb.authStore.clear();
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            '/login',
-            (route) => false,
-          );
-        },
-      ),
-    ], // closes actions
-  ), // closes AppBar
-
-  // Keep your existing body: ... here
-
       body: _currentIndex == 0
           ? _buildDashboard()
           : ViewOrdersListScreen(
@@ -296,7 +323,6 @@ class _HomeScreenState extends State<HomeScreen> {
             .where((order) => _orderStatus(order) == 'delivered')
             .length;
 
-        // All non-delivered, non-cancelled orders are counted as pending.
         final pendingCount = orders.where((order) {
           final status = _orderStatus(order);
           return status != 'delivered' &&
@@ -309,45 +335,83 @@ class _HomeScreenState extends State<HomeScreen> {
           (sum, order) => sum + _amountPaid(order),
         );
 
-        return ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Text(
-              'Welcome',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            const SizedBox(height: 20),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.5,
+        final totalOrderAmount = orders.fold<double>(
+          0,
+          (sum, order) => sum + _numberFromOrder(order, ['total']),
+        );
+
+        final pendingAmount = orders.fold<double>(0, (sum, order) {
+          final total = _numberFromOrder(order, ['total']);
+          final paid = _amountPaid(order);
+          final remaining = total - paid;
+          return sum + (remaining > 0 ? remaining : 0);
+        });
+
+        return FutureBuilder<double>(
+          future: _accountBalanceFuture,
+          builder: (context, balanceSnapshot) {
+            final accountBalanceText = balanceSnapshot.hasError
+                ? 'Unavailable'
+                : balanceSnapshot.hasData
+                    ? balanceSnapshot.data!.toStringAsFixed(2)
+                    : 'Loading…';
+
+            return ListView(
+              padding: const EdgeInsets.all(20),
               children: [
-                _MetricCard(
-                  title: 'Total orders',
-                  value: '${orders.length}',
-                  icon: Icons.receipt_long_outlined,
+                Text(
+                  'Welcome',
+                  style: Theme.of(context).textTheme.headlineMedium,
                 ),
-                _MetricCard(
-                  title: 'Delivered',
-                  value: '$deliveredCount',
-                  icon: Icons.check_circle_outline,
-                ),
-                _MetricCard(
-                  title: 'Pending',
-                  value: '$pendingCount',
-                  icon: Icons.pending_outlined,
-                ),
-                _MetricCard(
-                  title: 'Total amount paid',
-                  value: totalPaid.toStringAsFixed(2),
-                  icon: Icons.payments_outlined,
+                const SizedBox(height: 20),
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.5,
+                  children: [
+                    _MetricCard(
+                      title: 'Total orders',
+                      value: '${orders.length}',
+                      icon: Icons.receipt_long_outlined,
+                    ),
+                    _MetricCard(
+                      title: 'Delivered',
+                      value: '$deliveredCount',
+                      icon: Icons.check_circle_outline,
+                    ),
+                    _MetricCard(
+                      title: 'Pending',
+                      value: '$pendingCount',
+                      icon: Icons.pending_outlined,
+                    ),
+                    _MetricCard(
+                      title: 'Total amount paid',
+                      value: totalPaid.toStringAsFixed(2),
+                      icon: Icons.payments_outlined,
+                    ),
+                    _MetricCard(
+                      title: 'Total order amount',
+                      value: totalOrderAmount.toStringAsFixed(2),
+                      icon: Icons.shopping_bag_outlined,
+                    ),
+                    _MetricCard(
+                      title: 'Amount pending',
+                      value: pendingAmount.toStringAsFixed(2),
+                      icon: Icons.hourglass_bottom,
+                    ),
+                    _MetricCard(
+                      title: 'Account balance',
+                      value: accountBalanceText,
+                      icon: Icons.account_balance_wallet_outlined,
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -593,7 +657,6 @@ class _SignupScreenState extends State<SignupScreen> {
         name: name,
       );
 
-      // Authenticate with the shared PocketBase client after signup.
       if (!pb.authStore.isValid) {
         await pb.collection('users').authWithPassword(email, password);
       }
