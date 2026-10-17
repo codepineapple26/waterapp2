@@ -179,6 +179,13 @@ class PocketBaseService {
     });
   }
 
+   Future<RecordModel> updateOrderFields(
+    String orderId,
+    Map<String, dynamic> body,
+  ) {
+    return pb.collection('orders').update(orderId, body: body);
+  }
+
   Future<void> unclaimOrder(String id) async {
     await pb.collection('orders').update(id, body: {
       'driver_id': null,
