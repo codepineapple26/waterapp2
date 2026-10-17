@@ -26,6 +26,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   bool _cancellationLoadFailed = false;
   bool _isUpdatingStatus = false;
   bool _isSubmittingCancellation = false;
+  bool _isConfirmingDelivery = false;
 
   String? _selectedStatus;
   String? _amountPaidOrderId;
@@ -93,6 +94,31 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     });
 
     await _loadCancellationRequest();
+  }
+
+  Future<void> _confirmCustomerDelivery() async {
+    setState(() => _isConfirmingDelivery = true);
+
+    try {
+      await PocketBaseService().confirmCustomerDelivery(widget.orderId);
+      await _refreshDetails();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Delivery confirmed')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not confirm delivery: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isConfirmingDelivery = false);
+      }
+    }
   }
 
   Future<void> _saveOrderUpdates(
@@ -327,6 +353,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           final quantity = order.getIntValue('quantity').toString();
           final notes = _formatDynamic(order.data['notes']);
           final status = order.getStringValue('status').trim();
+          final isDelivered = status.toLowerCase() == 'delivered';
+          final customerConfirmed =
+              order.data['customer_confirmation'] == true;
+          final confirmedAt = _formatCreated(order.data['confirmed_at']);
           final total = _formatDynamic(order.data['total']);
           final rawAmountPaid = order.data['amount_paid'];
           final amountPaidValue =
@@ -339,8 +369,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             order.data['updated'] ?? order.getStringValue('updated'),
           );
 
-          // Only initialize the controller once per order. A non-zero saved
-          // payment locks the field until that value is cleared in PocketBase.
+          // A non-zero saved payment locks the field until it is cleared
+          // in PocketBase.
           if (_amountPaidOrderId != id) {
             _amountPaidOrderId = id;
             _amountPaidController.text =
@@ -407,7 +437,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       labelText: 'Amount paid',
                       border: const OutlineInputBorder(),
                       helperText: _amountPaidLocked
-                          ? 'Locked after a non-zero payment is saved. Clear it in PocketBase to edit.'
+                          ? 'Locked after a non-zero payment is saved. '
+                              'Clear it in PocketBase to edit.'
                           : null,
                     ),
                   ),
@@ -434,6 +465,41 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 _buildRow('Total', total),
                 _buildRow('Amount paid', amountPaid),
                 _buildRow('Delivery date', deliveryDate),
+
+                if (isDelivered) ...[
+                  _buildRow(
+                    'Customer confirmation',
+                    customerConfirmed ? 'Confirmed' : 'Not confirmed',
+                  ),
+                  if (customerConfirmed)
+                    _buildRow('Confirmed at', confirmedAt),
+                  if (!isDriver && !customerConfirmed) ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isConfirmingDelivery
+                            ? null
+                            : _confirmCustomerDelivery,
+                        icon: _isConfirmingDelivery
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.check_circle_outline),
+                        label: Text(
+                          _isConfirmingDelivery
+                              ? 'Confirming…'
+                              : 'Confirm delivery',
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+
                 _buildRow('Driver', driverId),
                 const SizedBox(height: 12),
                 _buildRow('Created', created),
@@ -443,8 +509,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 OrderStatusTimeline(orderId: id),
                 const SizedBox(height: 20),
 
-                if (widget.onReorder != null &&
-                    status.toLowerCase() != 'delivered') ...[
+                if (widget.onReorder != null && !isDelivered) ...[
                   _buildRow('Cancellation request', cancellationStatus),
                   SizedBox(
                     width: double.infinity,
