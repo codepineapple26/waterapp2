@@ -119,10 +119,15 @@ class _HomeScreenState extends State<HomeScreen> {
       return sum + (double.tryParse(value?.toString() ?? '') ?? 0);
     });
 
-    final paidForDeliveredOrders = orders.fold<double>((sum, order) {
-      if (_orderStatus(order) != 'delivered') {
-        return sum;
-      }
+    final paidForDeliveredOrders = orders.fold<double>(
+  0.0,
+  (sum, order) =>
+      sum +
+      (order['status'] == 'delivered'
+          ? ((order['amount_paid'] as num?)?.toDouble() ?? 0.0)
+          : 0.0),
+);
+
 
       return sum + _amountPaid(order);
     });
