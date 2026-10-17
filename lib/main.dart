@@ -231,7 +231,7 @@ Widget build(BuildContext context) {
     appBar: AppBar(
       title: Text(
         _currentIndex == 0
-            ? 'Dashboard'
+            ? 'Dashboard Driver'
             : _currentIndex == 1
                 ? 'Place Order'
                 : 'My Orders',
@@ -250,14 +250,29 @@ Widget build(BuildContext context) {
       ],
     ),
     body: _currentIndex == 0
-        ? _buildDashboard()
-        : _currentIndex == 1
-            ? CreateOrderScreen()
-            : ViewOrdersListScreen(
-                key: ValueKey('driver-orders-$_ordersVersion'),
-                onReorder: _handleReorder,
-              ),
-    bottomNavigationBar: BottomNavigationBar(
+    ? _buildDashboard()
+    : _currentIndex == 1
+        ? CreateOrderScreen()
+        : ViewOrdersListScreen(
+            key: ValueKey('driver-orders-$_ordersVersion'),
+            onReorder: _handleReorder,
+          ),
+
+floatingActionButton: _currentIndex == 0
+    ? FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => CustomerRegistrationScreen(pb: pb),
+            ),
+          );
+        },
+        icon: const Icon(Icons.person_add),
+        label: const Text('Register Customer'),
+      )
+    : null,
+
+bottomNavigationBar: BottomNavigationBar(
       type: BottomNavigationBarType.fixed,
       currentIndex: _currentIndex,
       showUnselectedLabels: true,
