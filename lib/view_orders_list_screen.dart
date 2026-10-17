@@ -57,11 +57,10 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
       setState(() => _ordersFuture = future);
     }
 
-    // FutureBuilder displays any loading error.
     try {
       await future;
     } catch (_) {
-      // The error is handled in the FutureBuilder.
+      // The FutureBuilder displays the error.
     }
   }
 
@@ -165,7 +164,6 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
                 final quantity = order.getIntValue('quantity');
                 final address = order.getStringValue('address');
                 final total = order.data['total'];
-                final created = order.data['created'];
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -178,7 +176,7 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
                     subtitle: Text(
                       'Address: $address\n'
                       'Status: ${status.isNotEmpty ? status : 'New'}\n'
-                      '${_formatDate(created)}',
+                      '${_formatDate(order.data['created'])}',
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -223,7 +221,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     'Delivered',
   ];
 
+  late RecordModel _order;
   late String _status;
+  late TextEditingController _amountPaidController;
   bool _saving = false;
 
   bool get _isDriver =>
@@ -232,40 +232,98 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    _status = widget.order.getStringValue('status').trim();
 
-    if (_status.isEmpty) _status = 'New';
-    if (!_statuses.contains(_status)) _statuses.insert(0, _status);
+    _order = widget.order;
+    _status = _order.getStringValue('status').trim();
+
+    if (_status.isEmpty) {
+      _status = 'New';
+    }
+    if (!_statuses.contains(_status)) {
+      _statuses.insert(0, _status);
+    }
+
+    final amountPaid = _order.data['amount_paid'];
+    _amountPaidController = TextEditingController(
+      text: amountPaid == null ? '0' : amountPaid.toString(),
+    );
   }
 
-  Future<void> _updateStatus(String newStatus) async {
+  @override
+  void dispose() {
+    _amountPaidController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveDriverUpdates() async {
+    final amountPaid = double.tryParse(_amountPaidController.text.trim());
+
+    if (amountPaid == null || amountPaid < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid amount paid')),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
 
     try {
-      await pb.collection('orders').update(
-        widget.order.id,
-        body: {'status': newStatus},
+      final updatedOrder = await pb.collection('orders').update(
+        _order.id,
+        body: {
+          'status': _status,
+          'amount_paid': amountPaid,
+        },
       );
 
       if (!mounted) return;
 
-      setState(() => _status = newStatus);
+      setState(() {
+        _order = updatedOrder;
+        _status = updatedOrder.getStringValue('status').trim();
+        _amountPaidController.text =
+            (updatedOrder.data['amount_paid'] ?? amountPaid).toString();
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Order status updated')),
+        const SnackBar(content: Text('Order updated')),
       );
     } catch (e) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update status: $e')),
+        SnackBar(content: Text('Could not update order: $e')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
+  Future<void> _refreshOrder() async {
+    try {
+      final refreshedOrder =
+          await pb.collection('orders').getOne(_order.id);
+
+      if (!mounted) return;
+
+      setState(() {
+        _order = refreshedOrder;
+        _status = refreshedOrder.getStringValue('status').trim();
+        if (_status.isEmpty) _status = 'New';
+        _amountPaidController.text =
+            (refreshedOrder.data['amount_paid'] ?? 0).toString();
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not refresh order: $e')),
+      );
+    }
+  }
+
   void _reorder() {
-    final data = widget.order.data;
+    final data = _order.data;
 
     Navigator.pop<Map<String, dynamic>>(context, {
       'action': 'reorder',
@@ -295,9 +353,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  String _formatTotal(dynamic value) {
-    final total = value is num ? value : num.tryParse(value?.toString() ?? '');
-    return total == null ? '—' : '₹${total.toStringAsFixed(2)}';
+  String _formatMoney(dynamic value) {
+    final amount = value is num ? value : num.tryParse(value?.toString() ?? '');
+    return amount == null ? '—' : '₹${amount.toStringAsFixed(2)}';
   }
 
   Widget _detail(String label, String value) {
@@ -309,10 +367,19 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final data = widget.order.data;
+    final data = _order.data;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Order Details')),
+      appBar: AppBar(
+        title: const Text('Order Details'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh order',
+            onPressed: _saving ? null : _refreshOrder,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -323,14 +390,14 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           _detail('Notes', _value(data['notes'])),
           _detail('Status', _status),
           _detail('Order placed', _formatDate(data['created'])),
-          _detail('Total', _formatTotal(data['total'])),
+          _detail('Total', _formatMoney(data['total'])),
+          _detail('Amount paid', _formatMoney(data['amount_paid'])),
+          _detail('Delivery date', _formatDate(data['delivery_date'])),
 
-          // widget.order.id remains available for PocketBase updates,
-          // but is intentionally not displayed.
           if (_isDriver) ...[
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: _status,
+              value: _statuses.contains(_status) ? _status : null,
               decoration: const InputDecoration(
                 labelText: 'Update status',
               ),
@@ -345,10 +412,30 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               onChanged: _saving
                   ? null
                   : (value) {
-                      if (value != null && value != _status) {
-                        _updateStatus(value);
+                      if (value != null) {
+                        setState(() => _status = value);
                       }
                     },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _amountPaidController,
+              enabled: !_saving,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Update amount paid',
+                prefixText: '₹ ',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _saving ? null : _saveDriverUpdates,
+                child: Text(_saving ? 'Saving…' : 'Save updates'),
+              ),
             ),
             if (_saving) const LinearProgressIndicator(),
           ],
