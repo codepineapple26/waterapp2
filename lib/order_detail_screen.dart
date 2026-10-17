@@ -27,6 +27,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   bool _isUpdatingStatus = false;
   bool _isSubmittingCancellation = false;
 
+  String? _selectedStatus;
+  String? _amountPaidOrderId;
+
+  final TextEditingController _amountPaidController =
+      TextEditingController();
+
   final List<String> _statuses = [
     'New',
     'Accepted',
@@ -39,6 +45,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     super.initState();
     _orderFuture = PocketBaseService().fetchOrderById(widget.orderId);
     _loadCancellationRequest();
+  }
+
+  @override
+  void dispose() {
+    _amountPaidController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadCancellationRequest() async {
@@ -78,31 +90,58 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     setState(() {
       _orderFuture = PocketBaseService().fetchOrderById(widget.orderId);
     });
+
     await _loadCancellationRequest();
   }
 
-  Future<void> _updateStatus(String orderId, String newStatus) async {
+  Future<void> _saveOrderUpdates(
+    RecordModel order,
+    String newStatus,
+  ) async {
+    final amountText = _amountPaidController.text.trim();
+    final amountPaid = double.tryParse(amountText);
+
+    if (amountPaid == null || amountPaid < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid amount paid')),
+      );
+      return;
+    }
+
     setState(() => _isUpdatingStatus = true);
 
     try {
-      await pb.collection('orders').update(
-        orderId,
-        body: {'status': newStatus},
-      );
+      final body = <String, dynamic>{
+        'status': newStatus,
+        'amount_paid': amountPaid,
+      };
+
+      final existingDeliveryDate = order.data['delivery_date'];
+
+      // Set the date when the order first becomes Delivered.
+      // Keep an existing delivery date unchanged on later updates.
+      if (newStatus.toLowerCase() == 'delivered' &&
+          (existingDeliveryDate == null ||
+              existingDeliveryDate.toString().isEmpty)) {
+        body['delivery_date'] = DateTime.now().toUtc().toIso8601String();
+      }
+
+      await PocketBaseService().updateOrderFields(order.id, body);
 
       if (!mounted) return;
 
       setState(() {
+        _selectedStatus = null;
         _orderFuture = PocketBaseService().fetchOrderById(widget.orderId);
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Order status updated')),
+        const SnackBar(content: Text('Order updated')),
       );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update status: $e')),
+          SnackBar(content: Text('Could not update order: $e')),
         );
       }
     } finally {
@@ -227,8 +266,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final status =
         _cancellationRequest?.getStringValue('request_status').toLowerCase();
 
-    // A rejected request can be submitted again. Pending or approved requests
-    // should not be duplicated.
     return _cancellationRequest == null || status == 'rejected';
   }
 
@@ -260,7 +297,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
           final order = snapshot.data!;
 
-          // Keep the record ID for PocketBase operations; do not display it.
           final id = order.id;
           final customerName = order.getStringValue('customer_name');
           final phone = order.getStringValue('phone');
@@ -269,16 +305,28 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           final notes = _formatDynamic(order.data['notes']);
           final status = order.getStringValue('status').trim();
           final total = _formatDynamic(order.data['total']);
+          final amountPaid = _formatDynamic(order.data['amount_paid']);
+          final deliveryDate = _formatCreated(order.data['delivery_date']);
           final driverId = _formatDynamic(order.data['driver_id']);
           final created = _formatCreated(order.getStringValue('created'));
           final updated = _formatDynamic(
             order.data['updated'] ?? order.getStringValue('updated'),
           );
 
+          // Fill the payment field when this order is first displayed.
+          if (_amountPaidOrderId != id) {
+            _amountPaidOrderId = id;
+            _amountPaidController.text =
+                amountPaid == '—' ? '0' : amountPaid;
+            _selectedStatus = null;
+          }
+
           final statusOptions = List<String>.from(_statuses);
           if (status.isNotEmpty && !statusOptions.contains(status)) {
             statusOptions.insert(0, status);
           }
+
+          final selectedStatus = _selectedStatus ?? status;
 
           final cancellationStatus = _cancellationLoadFailed
               ? 'Could not load status'
@@ -297,9 +345,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 _buildRow('Quantity', quantity),
                 _buildRow('Notes', notes),
 
-                if (isDriver)
+                if (isDriver) ...[
                   DropdownButtonFormField<String>(
-                    value: status.isEmpty ? null : status,
+                    value: statusOptions.contains(selectedStatus)
+                        ? selectedStatus
+                        : null,
                     decoration: const InputDecoration(
                       labelText: 'Order status',
                     ),
@@ -314,12 +364,37 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     onChanged: _isUpdatingStatus
                         ? null
                         : (value) {
-                            if (value != null && value != status) {
-                              _updateStatus(id, value);
+                            if (value != null) {
+                              setState(() => _selectedStatus = value);
                             }
                           },
-                  )
-                else
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _amountPaidController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Amount paid',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _isUpdatingStatus
+                          ? null
+                          : () => _saveOrderUpdates(
+                                order,
+                                selectedStatus,
+                              ),
+                      child: Text(
+                        _isUpdatingStatus ? 'Saving…' : 'Save updates',
+                      ),
+                    ),
+                  ),
+                ] else
                   _buildRow('Status', status.isEmpty ? '—' : status),
 
                 if (_isUpdatingStatus) ...[
@@ -328,6 +403,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 ],
 
                 _buildRow('Total', total),
+                _buildRow('Amount paid', amountPaid),
+                _buildRow('Delivery date', deliveryDate),
                 _buildRow('Driver', driverId),
                 const SizedBox(height: 12),
                 _buildRow('Created', created),
