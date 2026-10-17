@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:pocketbase/pocketbase.dart';
 import 'package:waterapp2/services/pocketbase_service.dart';
 
 class CreateOrderScreen extends StatefulWidget {
@@ -23,12 +26,20 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   final _notesController = TextEditingController();
 
   DateTime? _deliveryDate;
+  List<RecordModel> _customers = [];
+  RecordModel? _selectedCustomer;
 
   bool _isLoading = false;
+  bool _isLoadingCustomers = false;
   bool _isPriceLoading = true;
   double? _pricePerBottle;
   String? _priceError;
   String _statusMessage = '';
+
+  PocketBaseService get _service => PocketBaseService();
+
+  bool get _isDriver =>
+      _service.currentUser?.data['role']?.toString() == 'driver';
 
   int get _quantity => int.tryParse(_quantityController.text.trim()) ?? 0;
 
@@ -38,14 +49,38 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     _loadBackendUserData();
     _applyInitialValues(widget.initialValues);
     _loadPricePerBottle();
+
+    if (_isDriver) {
+      _loadCustomers();
+    }
   }
 
   @override
   void didUpdateWidget(covariant CreateOrderScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-
     if (oldWidget.initialValues != widget.initialValues) {
       _applyInitialValues(widget.initialValues);
+    }
+  }
+
+  Future<void> _loadCustomers() async {
+    setState(() => _isLoadingCustomers = true);
+
+    try {
+      final records = await _service.client.collection('users').getFullList(
+            sort: 'name',
+            filter: 'role = "customer"',
+          );
+
+      if (!mounted) return;
+      setState(() {
+        _customers = records;
+        _isLoadingCustomers = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isLoadingCustomers = false);
+      _showMessage('Could not load customers: $error');
     }
   }
 
@@ -58,9 +93,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
 
     try {
-      final price = await PocketBaseService().getPricePerBottle();
-
+      final price = await _service.getPricePerBottle();
       if (!mounted) return;
+
       setState(() {
         _pricePerBottle = price;
         _priceError = null;
@@ -76,19 +111,12 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 
   void _loadBackendUserData() {
-    final service = PocketBaseService();
+    final user = _service.currentUser;
+    if (user == null) return;
 
-    if (service.isLoggedIn && service.currentUser != null) {
-      final userModel = service.currentUser!;
-
-      final backendName = userModel.getStringValue('name');
-      final backendPhone = userModel.getStringValue('phone');
-      final backendAddress = userModel.getStringValue('address');
-
-      if (backendName.isNotEmpty) _nameController.text = backendName;
-      if (backendPhone.isNotEmpty) _phoneController.text = backendPhone;
-      if (backendAddress.isNotEmpty) _addressController.text = backendAddress;
-    }
+    _nameController.text = user.data['name']?.toString() ?? '';
+    _phoneController.text = user.data['phone']?.toString() ?? '';
+    _addressController.text = user.data['address']?.toString() ?? '';
   }
 
   void _applyInitialValues(Map<String, dynamic>? values) {
@@ -111,6 +139,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
   }
 
+  void _selectCustomer(RecordModel? customer) {
+    setState(() {
+      _selectedCustomer = customer;
+      _nameController.text = customer?.data['name']?.toString() ?? '';
+      _phoneController.text = customer?.data['phone']?.toString() ?? '';
+      _addressController.text = customer?.data['address']?.toString() ?? '';
+    });
+  }
+
   Future<void> _pickDeliveryDate() async {
     final today = DateUtils.dateOnly(DateTime.now());
 
@@ -127,9 +164,46 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 
   void _showMessage(String message) {
+    if (!mounted) return;
+
     setState(() => _statusMessage = message);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+
+  Widget _buildCustomerPicker() {
+    if (!_isDriver) return const SizedBox.shrink();
+
+    if (_isLoadingCustomers) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: DropdownButtonFormField<RecordModel>(
+        value: _selectedCustomer,
+        isExpanded: true,
+        decoration: const InputDecoration(
+          labelText: 'Select customer',
+          border: OutlineInputBorder(),
+        ),
+        items: _customers.map((customer) {
+          final name = customer.data['name']?.toString() ?? 'Unnamed customer';
+          final email = customer.data['email']?.toString() ?? '';
+
+          return DropdownMenuItem<RecordModel>(
+            value: customer,
+            child: Text(email.isEmpty ? name : '$name ($email)'),
+          );
+        }).toList(),
+        onChanged: _selectCustomer,
+        validator: (customer) =>
+            customer == null ? 'Select a customer' : null,
+      ),
     );
   }
 
@@ -146,7 +220,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Could not load bottle price${_priceError == null ? '.' : ': $_priceError'}',
+            'Could not load bottle price'
+            '${_priceError == null ? '.' : ': $_priceError'}',
             style: const TextStyle(color: Colors.red),
           ),
           TextButton(
@@ -170,9 +245,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Price per bottle: ₹${_pricePerBottle!.toStringAsFixed(2)}',
-          ),
+          Text('Price per bottle: ₹${_pricePerBottle!.toStringAsFixed(2)}'),
           const SizedBox(height: 4),
           Text(
             'Total: ₹${total.toStringAsFixed(2)}',
@@ -186,17 +259,21 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   Future<void> _submitOrder() async {
     if (!widget.allowSubmit) return;
 
-    final service = PocketBaseService();
-
-    if (!service.isLoggedIn || service.currentUser == null) {
+    final user = _service.currentUser;
+    if (!_service.isLoggedIn || user == null) {
       _showMessage('Sign in required to place an order.');
+      return;
+    }
+
+    if (_isDriver && _selectedCustomer == null) {
+      _showMessage('Please select a customer.');
       return;
     }
 
     final address = _addressController.text.trim();
     final phone = _phoneController.text.trim();
-    final deliveryDate = _deliveryDate;
     final quantity = _quantity;
+    final deliveryDate = _deliveryDate;
 
     if (address.isEmpty) {
       _showMessage('Delivery address cannot be blank.');
@@ -221,40 +298,54 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     });
 
     try {
-      await service.createDemoOrder(
-        address: address,
-        phone: phone,
-        quantity: quantity,
-        notes: _notesController.text.trim(),
-        deliverySchedule: {
+      final customer = _isDriver ? _selectedCustomer! : user;
+      final customerId = customer.id;
+      final customerName =
+          _nameController.text.trim().isNotEmpty
+              ? _nameController.text.trim()
+              : customer.data['name']?.toString() ?? 'Customer';
+
+      final price = await _service.getPricePerBottle();
+      final total = quantity * price;
+
+      final body = <String, dynamic>{
+        'user_id': customerId,
+        'customer_name': customerName,
+        'phone': phone,
+        'address': address,
+        'quantity': quantity,
+        'notes': _notesController.text.trim(),
+        'status': 'New',
+        'total': total,
+        'amount_paid': 0,
+        'ward': customer.data['ward']?.toString() ?? '',
+        'floor': customer.data['floor']?.toString() ?? '',
+        if (_isDriver) 'driver_id': user.id,
+        'delivery_schedule': jsonEncode({
           'date': deliveryDate.toIso8601String().split('T').first,
-        },
-      );
+        }),
+      };
+
+      await _service.client.collection('orders').create(body: body);
 
       if (!mounted) return;
 
-      const message = 'Order placed successfully!';
       setState(() {
-        _statusMessage = message;
+        _statusMessage = 'Order placed successfully!';
         _quantityController.text = '1';
         _notesController.clear();
         _deliveryDate = null;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(message)),
+        const SnackBar(content: Text('Order placed successfully!')),
       );
-    } catch (error, st) {
+    } catch (error, stackTrace) {
       if (!mounted) return;
 
-      final message = 'Submission failed: $error';
-      setState(() => _statusMessage = message);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
-
+      _showMessage('Submission failed: $error');
       // ignore: avoid_print
-      print('Order submit error: $error\n$st');
+      print('Order submit error: $error\n$stackTrace');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -263,78 +354,40 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   Future<void> _confirmAndSubmit() async {
     if (!widget.allowSubmit) return;
 
-    final address = _addressController.text.trim();
-    final phone = _phoneController.text.trim();
-    final quantity = _quantity;
-    final deliveryDate = _deliveryDate;
-
-    final service = PocketBaseService();
-    if (!service.isLoggedIn || service.currentUser == null) {
-      _showMessage('Sign in required');
+    if (_isDriver && _selectedCustomer == null) {
+      _showMessage('Please select a customer.');
       return;
     }
-
-    if (address.isEmpty || phone.isEmpty) {
-      _showMessage(
-        address.isEmpty ? 'Address cannot be blank.' : 'Phone cannot be blank.',
-      );
+    if (_addressController.text.trim().isEmpty ||
+        _phoneController.text.trim().isEmpty) {
+      _showMessage('Address and phone cannot be blank.');
       return;
     }
-
-    if (quantity < 1) {
+    if (_quantity < 1) {
       _showMessage('Quantity must be at least 1.');
       return;
     }
-
-    if (deliveryDate == null) {
+    if (_deliveryDate == null) {
       _showMessage('Please choose a delivery date.');
       return;
     }
 
-    double pricePerBottle;
-    try {
-      pricePerBottle = await service.getPricePerBottle();
-
-      if (!mounted) return;
-      setState(() {
-        _pricePerBottle = pricePerBottle;
-        _priceError = null;
-        _isPriceLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      _showMessage('Could not load bottle price: $error');
-      return;
-    }
-
-    final total = quantity * pricePerBottle;
+    final price = _pricePerBottle ?? await _service.getPricePerBottle();
+    final total = _quantity * price;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Confirm Order'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Name: ${_nameController.text.trim()}'),
-            Text('Phone: $phone'),
-            Text('Address: $address'),
-            Text('Quantity: $quantity'),
-            Text(
-              'Price per bottle: ₹${pricePerBottle.toStringAsFixed(2)}',
-            ),
-            Text('Total: ₹${total.toStringAsFixed(2)}'),
-            Text(
-              'Delivery date: '
-              '${MaterialLocalizations.of(dialogContext).formatMediumDate(deliveryDate)}',
-            ),
-            if (_notesController.text.trim().isNotEmpty) ...[
-              const SizedBox(height: 8),
-              const Text('Notes:'),
-              Text(_notesController.text.trim()),
-            ],
-          ],
+        content: Text(
+          'Customer: ${_nameController.text.trim()}\n'
+          'Phone: ${_phoneController.text.trim()}\n'
+          'Address: ${_addressController.text.trim()}\n'
+          'Quantity: $_quantity\n'
+          'Price per bottle: ₹${price.toStringAsFixed(2)}\n'
+          'Total: ₹${total.toStringAsFixed(2)}\n'
+          'Delivery date: '
+          '${MaterialLocalizations.of(dialogContext).formatMediumDate(_deliveryDate!)}',
         ),
         actions: [
           TextButton(
@@ -349,8 +402,9 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       ),
     );
 
-    if (!mounted) return;
-    if (confirmed == true) await _submitOrder();
+    if (confirmed == true && mounted) {
+      await _submitOrder();
+    }
   }
 
   @override
@@ -366,35 +420,28 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(),
+      appBar: AppBar(title: const Text('Create Order')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (!widget.allowSubmit) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.yellow.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'Viewing mode: order submission is disabled. '
-                  'Log in to create orders.',
+            if (!widget.allowSubmit)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'Viewing mode: order submission is disabled.',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
-              const SizedBox(height: 12),
-            ],
+            _buildCustomerPicker(),
             TextField(
               controller: _nameController,
               decoration: const InputDecoration(
                 labelText: 'Customer Name',
                 border: OutlineInputBorder(),
               ),
-              readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
+              readOnly: _isDriver,
             ),
             const SizedBox(height: 16),
             TextField(
@@ -402,11 +449,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               decoration: const InputDecoration(
                 labelText: 'Contact Phone Number',
                 border: OutlineInputBorder(),
-                helperText:
-                    'Loaded from profile. Edit if different for this specific order.',
               ),
               keyboardType: TextInputType.phone,
-              readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
             const SizedBox(height: 16),
             TextField(
@@ -414,11 +458,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               decoration: const InputDecoration(
                 labelText: 'Delivery Address',
                 border: OutlineInputBorder(),
-                helperText:
-                    'Loaded from profile. Edit if different for this specific order.',
               ),
               maxLines: 2,
-              readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
             const SizedBox(height: 16),
             OutlinedButton.icon(
@@ -439,7 +480,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
-              readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 12),
@@ -452,13 +492,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 border: OutlineInputBorder(),
               ),
               maxLines: 2,
-              readOnly: !widget.allowSubmit && !PocketBaseService().isLoggedIn,
             ),
             const SizedBox(height: 24),
             _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : ElevatedButton(
-                    onPressed: widget.allowSubmit ? _confirmAndSubmit : null,
+                    onPressed:
+                        widget.allowSubmit ? _confirmAndSubmit : null,
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(50),
                     ),
@@ -470,17 +510,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   ),
             if (_statusMessage.isNotEmpty) ...[
               const SizedBox(height: 24),
-              Center(
-                child: Text(
-                  _statusMessage,
-                  style: TextStyle(
-                    color: _statusMessage.contains('successfully')
-                        ? Colors.green
-                        : Colors.red,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+              Center(child: Text(_statusMessage)),
             ],
           ],
         ),
