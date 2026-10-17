@@ -20,6 +20,7 @@ class OrderDetailScreen extends StatefulWidget {
 
 class _OrderDetailScreenState extends State<OrderDetailScreen> {
   late Future<RecordModel> _orderFuture;
+  late Future<List<RecordModel>> _deliveriesFuture;
 
   RecordModel? _cancellationRequest;
   bool _isLoadingCancellation = true;
@@ -27,6 +28,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   bool _isUpdatingStatus = false;
   bool _isSubmittingCancellation = false;
   bool _isConfirmingDelivery = false;
+  bool _isRequestingDelivery = false;
 
   String? _selectedStatus;
   String? _amountPaidOrderId;
@@ -39,13 +41,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     'New',
     'Accepted',
     'Out for delivery',
-    'Delivered',
   ];
 
   @override
   void initState() {
     super.initState();
     _orderFuture = PocketBaseService().fetchOrderById(widget.orderId);
+    _deliveriesFuture = _loadOrderDeliveries();
     _loadCancellationRequest();
   }
 
@@ -53,6 +55,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   void dispose() {
     _amountPaidController.dispose();
     super.dispose();
+  }
+
+  Future<List<RecordModel>> _loadOrderDeliveries() {
+    return pb.collection('order_deliveries').getFullList(
+          filter: 'order = "${widget.orderId}"',
+          sort: 'created',
+        );
   }
 
   Future<void> _loadCancellationRequest() async {
@@ -91,16 +100,212 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Future<void> _refreshDetails() async {
     setState(() {
       _orderFuture = PocketBaseService().fetchOrderById(widget.orderId);
+      _deliveriesFuture = _loadOrderDeliveries();
     });
 
     await _loadCancellationRequest();
   }
 
-  Future<void> _confirmCustomerDelivery() async {
+  Future<void> _requestDelivery(
+    RecordModel order,
+    int availableQuantity,
+  ) async {
+    if (availableQuantity <= 0) return;
+
+    final quantityController = TextEditingController();
+    var requestedFor = DateTime.now();
+    String? validationError;
+
+    final requestedQuantity = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Request delivery'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Available to schedule: $availableQuantity bottles'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: quantityController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Quantity',
+                  errorText: validationError,
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: requestedFor,
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime.now().add(
+                      const Duration(days: 365 * 3),
+                    ),
+                  );
+
+                  if (picked != null) {
+                    setDialogState(() => requestedFor = picked);
+                  }
+                },
+                icon: const Icon(Icons.calendar_today),
+                label: Text(
+                  'Requested for: ${DateFormat('MMM d, y').format(requestedFor)}',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final quantity = int.tryParse(quantityController.text.trim());
+
+                if (quantity == null ||
+                    quantity < 1 ||
+                    quantity > availableQuantity) {
+                  setDialogState(() {
+                    validationError =
+                        'Enter a quantity from 1 to $availableQuantity.';
+                  });
+                  return;
+                }
+
+                Navigator.pop(dialogContext, quantity);
+              },
+              child: const Text('Request'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    quantityController.dispose();
+
+    if (requestedQuantity == null || !mounted) return;
+
+    setState(() => _isRequestingDelivery = true);
+
+    try {
+      await pb.collection('order_deliveries').create(
+        body: {
+          'order': order.id,
+          'quantity': requestedQuantity,
+          'status': 'requested',
+          'requested_for': requestedFor.toUtc().toIso8601String(),
+        },
+      );
+
+      await _refreshDetails();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Delivery requested')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not request delivery: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isRequestingDelivery = false);
+      }
+    }
+  }
+
+  Future<void> _startDelivery(RecordModel delivery) async {
+    try {
+      await pb.collection('order_deliveries').update(
+        delivery.id,
+        body: {'status': 'out_for_delivery'},
+      );
+
+      await _refreshDetails();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Delivery marked as out for delivery')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update delivery: $e')),
+      );
+    }
+  }
+
+  Future<void> _markDeliveryDelivered(
+    RecordModel order,
+    RecordModel delivery,
+  ) async {
+    try {
+      await pb.collection('order_deliveries').update(
+        delivery.id,
+        body: {
+          'status': 'delivered',
+          'delivered_at': DateTime.now().toUtc().toIso8601String(),
+        },
+      );
+
+      final deliveries = await _loadOrderDeliveries();
+      final deliveredQuantity = deliveries
+          .where((item) => item.data['status'] == 'delivered')
+          .fold<int>(
+            0,
+            (sum, item) => sum + item.getIntValue('quantity'),
+          );
+
+      // The parent order becomes Delivered only after all its bottles
+      // have been delivered across the individual delivery records.
+      if (deliveredQuantity >= order.getIntValue('quantity')) {
+        await PocketBaseService().updateOrderFields(
+          order.id,
+          {
+            'status': 'Delivered',
+            'delivery_date': DateTime.now().toUtc().toIso8601String(),
+          },
+        );
+      }
+
+      await _refreshDetails();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Delivery marked as delivered')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not complete delivery: $e')),
+      );
+    }
+  }
+
+  Future<void> _confirmCustomerDelivery(String deliveryId) async {
     setState(() => _isConfirmingDelivery = true);
 
     try {
-      await PocketBaseService().confirmCustomerDelivery(widget.orderId);
+      await pb.collection('order_deliveries').update(
+        deliveryId,
+        body: {
+          'customer_confirmation': true,
+          'confirmed_at': DateTime.now().toUtc().toIso8601String(),
+        },
+      );
+
       await _refreshDetails();
 
       if (!mounted) return;
@@ -125,6 +330,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     RecordModel order,
     String newStatus,
   ) async {
+    if (newStatus.toLowerCase() == 'delivered') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Mark individual deliveries as delivered. The order will be '
+            'marked delivered when its full quantity has been delivered.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final amountText = _amountPaidController.text.trim();
     final amountPaid = double.tryParse(amountText);
 
@@ -135,10 +352,27 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       return;
     }
 
+    if (_amountPaidLocked) {
+      final currentAmount = order.data['amount_paid'];
+      final savedAmount =
+          currentAmount is num ? currentAmount.toDouble() : 0.0;
+
+      if (amountPaid != savedAmount) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Amount paid is locked. Clear it in PocketBase before editing.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Confirm delivery update'),
+        title: const Text('Confirm order update'),
         content: Text(
           'Save status as "$newStatus" and amount paid as '
           '${amountPaid.toStringAsFixed(2)}?',
@@ -161,21 +395,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     setState(() => _isUpdatingStatus = true);
 
     try {
-      final body = <String, dynamic>{
-        'status': newStatus,
-        'amount_paid': amountPaid,
-      };
-
-      final existingDeliveryDate = order.data['delivery_date'];
-
-      // The backend hook should also set this when status becomes Delivered.
-      if (newStatus.toLowerCase() == 'delivered' &&
-          (existingDeliveryDate == null ||
-              existingDeliveryDate.toString().isEmpty)) {
-        body['delivery_date'] = DateTime.now().toUtc().toIso8601String();
-      }
-
-      await PocketBaseService().updateOrderFields(order.id, body);
+      await PocketBaseService().updateOrderFields(
+        order.id,
+        {
+          'status': newStatus,
+          'amount_paid': amountPaid,
+        },
+      );
 
       if (!mounted) return;
 
@@ -318,6 +544,88 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return _cancellationRequest == null || status == 'rejected';
   }
 
+  Widget _buildDeliveryCard(
+    RecordModel order,
+    RecordModel delivery,
+    bool isDriver,
+  ) {
+    final status = delivery.getStringValue('status');
+    final quantity = delivery.getIntValue('quantity');
+    final requestedFor = _formatCreated(delivery.data['requested_for']);
+    final deliveredAt = _formatCreated(delivery.data['delivered_at']);
+    final confirmed = delivery.data['customer_confirmation'] == true;
+    final confirmedAt = _formatCreated(delivery.data['confirmed_at']);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$quantity bottles • ${status.replaceAll('_', ' ')}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            _buildRow('Requested for', requestedFor),
+            if (status == 'delivered') ...[
+              _buildRow('Delivered at', deliveredAt),
+              _buildRow(
+                'Customer confirmation',
+                confirmed ? 'Confirmed' : 'Not confirmed',
+              ),
+              if (confirmed) _buildRow('Confirmed at', confirmedAt),
+            ],
+            if (isDriver && status == 'requested') ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _startDelivery(delivery),
+                  child: const Text('Start delivery'),
+                ),
+              ),
+            ],
+            if (isDriver && status == 'out_for_delivery') ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _markDeliveryDelivered(order, delivery),
+                  child: const Text('Mark delivered'),
+                ),
+              ),
+            ],
+            if (!isDriver && status == 'delivered' && !confirmed) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isConfirmingDelivery
+                      ? null
+                      : () => _confirmCustomerDelivery(delivery.id),
+                  icon: _isConfirmingDelivery
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.check_circle_outline),
+                  label: Text(
+                    _isConfirmingDelivery
+                        ? 'Confirming…'
+                        : 'Confirm this delivery',
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDriver = pb.authStore.model?.data['role'] == 'driver';
@@ -345,18 +653,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           }
 
           final order = snapshot.data!;
-
           final id = order.id;
           final customerName = order.getStringValue('customer_name');
           final phone = order.getStringValue('phone');
           final address = order.getStringValue('address');
-          final quantity = order.getIntValue('quantity').toString();
+          final totalQuantity = order.getIntValue('quantity');
           final notes = _formatDynamic(order.data['notes']);
           final status = order.getStringValue('status').trim();
           final isDelivered = status.toLowerCase() == 'delivered';
-          final customerConfirmed =
-              order.data['customer_confirmation'] == true;
-          final confirmedAt = _formatCreated(order.data['confirmed_at']);
           final total = _formatDynamic(order.data['total']);
           final rawAmountPaid = order.data['amount_paid'];
           final amountPaidValue =
@@ -369,8 +673,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             order.data['updated'] ?? order.getStringValue('updated'),
           );
 
-          // A non-zero saved payment locks the field until it is cleared
-          // in PocketBase.
           if (_amountPaidOrderId != id) {
             _amountPaidOrderId = id;
             _amountPaidController.text =
@@ -380,7 +682,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           }
 
           final statusOptions = List<String>.from(_statuses);
-          if (status.isNotEmpty && !statusOptions.contains(status)) {
+          if (status.isNotEmpty &&
+              !statusOptions.contains(status) &&
+              status.toLowerCase() != 'delivered') {
             statusOptions.insert(0, status);
           }
 
@@ -392,170 +696,232 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   ? 'Loading…'
                   : _cancellationStatus;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildRow('Customer', customerName),
-                _buildRow('Phone', phone),
-                _buildRow('Address', address),
-                _buildRow('Quantity', quantity),
-                _buildRow('Notes', notes),
+          return FutureBuilder<List<RecordModel>>(
+            future: _deliveriesFuture,
+            builder: (context, deliverySnapshot) {
+              if (deliverySnapshot.connectionState ==
+                  ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-                if (isDriver) ...[
-                  DropdownButtonFormField<String>(
-                    value: statusOptions.contains(selectedStatus)
-                        ? selectedStatus
-                        : null,
-                    decoration: const InputDecoration(
-                      labelText: 'Order status',
-                    ),
-                    items: statusOptions
-                        .map(
-                          (value) => DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: _isUpdatingStatus
-                        ? null
-                        : (value) {
-                            if (value != null) {
-                              setState(() => _selectedStatus = value);
-                            }
-                          },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _amountPaidController,
-                    readOnly: _amountPaidLocked,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText: 'Amount paid',
-                      border: const OutlineInputBorder(),
-                      helperText: _amountPaidLocked
-                          ? 'Locked after a non-zero payment is saved. '
-                              'Clear it in PocketBase to edit.'
-                          : null,
+              if (deliverySnapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      'Failed to load deliveries: ${deliverySnapshot.error}',
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isUpdatingStatus
-                          ? null
-                          : () => _saveOrderUpdates(order, selectedStatus),
-                      child: Text(
-                        _isUpdatingStatus ? 'Saving…' : 'Save updates',
-                      ),
-                    ),
-                  ),
-                ] else
-                  _buildRow('Status', status.isEmpty ? '—' : status),
+                );
+              }
 
-                if (_isUpdatingStatus) ...[
-                  const SizedBox(height: 12),
-                  const LinearProgressIndicator(),
-                ],
+              final deliveries =
+                  deliverySnapshot.data ?? <RecordModel>[];
 
-                _buildRow('Total', total),
-                _buildRow('Amount paid', amountPaid),
-                _buildRow('Delivery date', deliveryDate),
+              final deliveredQuantity = deliveries
+                  .where((delivery) => delivery.data['status'] == 'delivered')
+                  .fold<int>(
+                    0,
+                    (sum, delivery) =>
+                        sum + delivery.getIntValue('quantity'),
+                  );
 
-                if (isDelivered) ...[
-                  _buildRow(
-                    'Customer confirmation',
-                    customerConfirmed ? 'Confirmed' : 'Not confirmed',
-                  ),
-                  if (customerConfirmed)
-                    _buildRow('Confirmed at', confirmedAt),
-                  if (!isDriver && !customerConfirmed) ...[
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _isConfirmingDelivery
+              final allocatedQuantity = deliveries.fold<int>(
+                0,
+                (sum, delivery) => sum + delivery.getIntValue('quantity'),
+              );
+
+              final remainingQuantity =
+                  totalQuantity - deliveredQuantity;
+              final availableToSchedule =
+                  (totalQuantity - allocatedQuantity).clamp(0, totalQuantity);
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildRow('Customer', customerName),
+                    _buildRow('Phone', phone),
+                    _buildRow('Address', address),
+                    _buildRow('Quantity', '$totalQuantity'),
+                    _buildRow('Notes', notes),
+
+                    if (isDriver) ...[
+                      DropdownButtonFormField<String>(
+                        value: statusOptions.contains(selectedStatus)
+                            ? selectedStatus
+                            : null,
+                        decoration: const InputDecoration(
+                          labelText: 'Order status',
+                        ),
+                        items: statusOptions
+                            .map(
+                              (value) => DropdownMenuItem<String>(
+                                value: value,
+                                child: Text(value),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: _isUpdatingStatus
                             ? null
-                            : _confirmCustomerDelivery,
-                        icon: _isConfirmingDelivery
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.check_circle_outline),
-                        label: Text(
-                          _isConfirmingDelivery
-                              ? 'Confirming…'
-                              : 'Confirm delivery',
+                            : (value) {
+                                if (value != null) {
+                                  setState(() => _selectedStatus = value);
+                                }
+                              },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _amountPaidController,
+                        readOnly: _amountPaidLocked,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: 'Amount paid',
+                          border: const OutlineInputBorder(),
+                          helperText: _amountPaidLocked
+                              ? 'Locked after a non-zero payment is saved. '
+                                  'Clear it in PocketBase to edit.'
+                              : null,
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _isUpdatingStatus
+                              ? null
+                              : () => _saveOrderUpdates(
+                                    order,
+                                    selectedStatus,
+                                  ),
+                          child: Text(
+                            _isUpdatingStatus ? 'Saving…' : 'Save updates',
+                          ),
+                        ),
+                      ),
+                    ] else
+                      _buildRow('Status', status.isEmpty ? '—' : status),
+
+                    if (_isUpdatingStatus) ...[
+                      const SizedBox(height: 12),
+                      const LinearProgressIndicator(),
+                    ],
+
+                    _buildRow('Total', total),
+                    _buildRow('Amount paid', amountPaid),
+                    _buildRow('Delivery date', deliveryDate),
+                    _buildRow(
+                      'Delivered quantity',
+                      '$deliveredQuantity of $totalQuantity bottles',
+                    ),
+                    _buildRow(
+                      'Remaining quantity',
+                      '${remainingQuantity < 0 ? 0 : remainingQuantity} bottles',
+                    ),
+
+                    const SizedBox(height: 12),
+                    Text(
+                      'Deliveries',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (deliveries.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text('No deliveries have been requested yet.'),
+                      )
+                    else
+                      ...deliveries.map(
+                        (delivery) =>
+                            _buildDeliveryCard(order, delivery, isDriver),
+                      ),
+
+                    if (!isDriver && availableToSchedule > 0) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _isRequestingDelivery
+                              ? null
+                              : () => _requestDelivery(
+                                    order,
+                                    availableToSchedule,
+                                  ),
+                          icon: const Icon(Icons.local_shipping_outlined),
+                          label: Text(
+                            _isRequestingDelivery
+                                ? 'Requesting…'
+                                : 'Request delivery',
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (_isRequestingDelivery) ...[
+                      const SizedBox(height: 12),
+                      const LinearProgressIndicator(),
+                    ],
+
+                    _buildRow('Driver', driverId),
+                    const SizedBox(height: 12),
+                    _buildRow('Created', created),
+                    _buildRow('Updated', updated),
+                    const SizedBox(height: 20),
+
+                    OrderStatusTimeline(orderId: id),
+                    const SizedBox(height: 20),
+
+                    if (widget.onReorder != null && !isDelivered) ...[
+                      _buildRow('Cancellation request', cancellationStatus),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: _isLoadingCancellation ||
+                                  _cancellationLoadFailed ||
+                                  _isSubmittingCancellation ||
+                                  !_canRequestCancellation
+                              ? (_cancellationLoadFailed
+                                  ? _loadCancellationRequest
+                                  : null)
+                              : () => _requestCancellation(order),
+                          child: Text(
+                            _isSubmittingCancellation
+                                ? 'Sending request...'
+                                : _isLoadingCancellation
+                                    ? 'Loading request status...'
+                                    : _cancellationLoadFailed
+                                        ? 'Retry loading request status'
+                                        : !_canRequestCancellation
+                                            ? 'Cancellation '
+                                                '$_cancellationStatus'
+                                            : 'Request cancellation',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    if (widget.onReorder != null) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _reorder(order),
+                          icon: const Icon(Icons.replay),
+                          label: const Text('Reorder this order'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    ElevatedButton(
+                      onPressed: _refreshDetails,
+                      child: const Text('Refresh'),
                     ),
                   ],
-                ],
-
-                _buildRow('Driver', driverId),
-                const SizedBox(height: 12),
-                _buildRow('Created', created),
-                _buildRow('Updated', updated),
-                const SizedBox(height: 20),
-
-                OrderStatusTimeline(orderId: id),
-                const SizedBox(height: 20),
-
-                if (widget.onReorder != null && !isDelivered) ...[
-                  _buildRow('Cancellation request', cancellationStatus),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: _isLoadingCancellation ||
-                              _cancellationLoadFailed ||
-                              _isSubmittingCancellation ||
-                              !_canRequestCancellation
-                          ? (_cancellationLoadFailed
-                              ? _loadCancellationRequest
-                              : null)
-                          : () => _requestCancellation(order),
-                      child: Text(
-                        _isSubmittingCancellation
-                            ? 'Sending request...'
-                            : _isLoadingCancellation
-                                ? 'Loading request status...'
-                                : _cancellationLoadFailed
-                                    ? 'Retry loading request status'
-                                    : !_canRequestCancellation
-                                        ? 'Cancellation $_cancellationStatus'
-                                        : 'Request cancellation',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-
-                if (widget.onReorder != null) ...[
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _reorder(order),
-                      icon: const Icon(Icons.replay),
-                      label: const Text('Reorder this order'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-
-                ElevatedButton(
-                  onPressed: _refreshDetails,
-                  child: const Text('Refresh'),
                 ),
-              ],
-            ),
+              );
+            },
           );
         },
       ),
