@@ -94,9 +94,10 @@ class _HomeScreenState extends State<HomeScreen> {
         );
   }
 Future<double> _loadAccountBalance() async {
-  final userId = pb.authStore.record?.id;
-  if (userId == null) {
-    throw Exception('No authenticated user');
+  final userId = pb.authStore.model?.id;
+
+  if (userId == null || userId.isEmpty) {
+    throw StateError('No authenticated user.');
   }
 
   final deposits = await pb.collection('deposits').getFullList(
@@ -121,6 +122,7 @@ Future<double> _loadAccountBalance() async {
 
   return depositTotal - paidForDeliveredOrders;
 }
+
 
 
   void _refreshOrders() {
