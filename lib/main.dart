@@ -206,7 +206,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_currentIndex == 0 ? 'Dashboard' : 'My Orders'),
+        title: Text(_currentIndex == 0 ? 'Dashboard Main' : 'My Orders'),
         leading: _currentIndex == 1
             ? IconButton(
                 tooltip: 'Back to dashboard',
