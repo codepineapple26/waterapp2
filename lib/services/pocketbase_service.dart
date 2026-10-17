@@ -496,6 +496,84 @@ class PocketBaseService {
     'created_by': driver.id,
   });
 }
+  Future<BulkOrderSummary> getBulkOrderSummary(String orderId) async {
+  final order = await pb.collection('orders').getOne(orderId);
+
+  final deliveries = await pb.collection('order_deliveries').getFullList(
+    filter: 'order = "$orderId" && status = "delivered"',
+  );
+
+  final entries = await pb.collection('order_ledger').getFullList(
+    filter: 'order = "$orderId"',
+  );
+
+  final orderedQuantity =
+      (order.data['quantity'] as num?)?.toInt() ?? 0;
+
+  final deliveredQuantity = deliveries.fold<int>(
+    0,
+    (sum, delivery) =>
+        sum + ((delivery.data['quantity'] as num?)?.toInt() ?? 0),
+  );
+
+  final totalCharged = entries
+      .where((entry) => entry.data['entry_type'] == 'charge')
+      .fold<double>(
+        0,
+        (sum, entry) =>
+            sum + ((entry.data['amount'] as num?)?.toDouble() ?? 0),
+      );
+
+  final laterPayments = entries
+      .where((entry) => entry.data['entry_type'] == 'payment')
+      .fold<double>(
+        0,
+        (sum, entry) =>
+            sum + ((entry.data['amount'] as num?)?.toDouble() ?? 0),
+      );
+
+  // Keep the existing order.amount_paid as the initial payment.
+  // Do not also add that same initial payment as a ledger payment.
+  final initialPayment =
+      (order.data['amount_paid'] as num?)?.toDouble() ?? 0;
+
+  final totalPaid = initialPayment + laterPayments;
+
+  return BulkOrderSummary(
+    orderedQuantity: orderedQuantity,
+    deliveredQuantity: deliveredQuantity,
+    remainingQuantity:
+        (orderedQuantity - deliveredQuantity).clamp(0, orderedQuantity),
+    totalCharged: totalCharged,
+    totalPaid: totalPaid,
+    amountDue: (totalCharged - totalPaid).clamp(0, double.infinity),
+  );
+}
+
+Future<RecordModel> recordDriverPayment({
+  required String orderId,
+  required double amount,
+  String note = '',
+}) async {
+  if (amount <= 0) {
+    throw ArgumentError('Payment amount must be greater than zero.');
+  }
+
+  final driver = pb.authStore.model;
+
+  if (driver == null || driver.getStringValue('role') != 'driver') {
+    throw StateError('Only a logged-in driver can record a payment.');
+  }
+
+  return pb.collection('order_ledger').create(body: {
+    'order': orderId,
+    'entry_type': 'payment',
+    'amount': amount,
+    'note': note,
+    'collected_by': driver.id,
+  });
+}
+
 
   Future<void> deleteOrder(String id) async {
     await pb.collection('orders').delete(id);
