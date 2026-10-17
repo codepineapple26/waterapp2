@@ -64,28 +64,33 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 
   Future<void> _loadCustomers() async {
+  setState(() {
+    _isLoadingCustomers = true;
+    _selectedCustomer = null;
+  });
+
+  try {
+    final records = await pb.collection('users').getFullList(
+      filter: 'role = "customer"',
+    );
+
+    if (!mounted) return;
+
     setState(() {
-      _isLoadingCustomers = true;
-      _selectedCustomer = null;
+      _customers = records;
+      _isLoadingCustomers = false;
     });
+  } catch (error) {
+    debugPrint('Failed to load customers: $error');
 
-    try {
-      final records = await _service.client.collection('users').getFullList(
-            sort: 'name',
-            filter: 'role = "customer"',
-          );
+    if (!mounted) return;
 
-      if (!mounted) return;
-      setState(() {
-        _customers = records;
-        _isLoadingCustomers = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _isLoadingCustomers = false);
-      _showMessage('Could not load customers: $error');
-    }
+    setState(() {
+      _customers = [];
+      _isLoadingCustomers = false;
+    });
   }
+}
 
   Future<void> _loadPricePerBottle({bool showLoading = false}) async {
     if (showLoading && mounted) {
