@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:pocketbase/pocketbase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/bulk_order_summary.dart';
+
 
 const String pocketBaseUrl = 'http://10.253.154.218:8090';
 
