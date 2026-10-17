@@ -74,7 +74,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _ordersFuture = _loadOrders();
-    _accountBalanceFuture = _loadAccountBalance();
+    _accountBalanceFuture =
+        _isDriver ? Future<double>.value(0) : _loadAccountBalance();
   }
 
   Future<List<dynamic>> _loadOrders() {
@@ -102,10 +103,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final deposits = await pb.collection('deposits').getFullList(
           filter: 'user_id = "$userId" && status = "approved"',
-          sort: '-created',
         );
 
-    return deposits.fold<double>(0, (sum, deposit) {
+    final orders = await pb.collection('orders').getFullList(
+          filter: 'user_id = "$userId"',
+        );
+
+    final depositTotal = deposits.fold<double>(0, (sum, deposit) {
       final value = deposit.data['amount'];
 
       if (value is num) {
@@ -114,12 +118,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
       return sum + (double.tryParse(value?.toString() ?? '') ?? 0);
     });
+
+    final paidForDeliveredOrders = orders.fold<double>((sum, order) {
+      if (_orderStatus(order) != 'delivered') {
+        return sum;
+      }
+
+      return sum + _amountPaid(order);
+    });
+
+    return depositTotal - paidForDeliveredOrders;
   }
 
   void _refreshOrders() {
     setState(() {
       _ordersFuture = _loadOrders();
-      _accountBalanceFuture = _loadAccountBalance();
+      _accountBalanceFuture =
+          _isDriver ? Future<double>.value(0) : _loadAccountBalance();
       _ordersVersion++;
     });
   }
@@ -351,7 +366,7 @@ class _HomeScreenState extends State<HomeScreen> {
           future: _accountBalanceFuture,
           builder: (context, balanceSnapshot) {
             final accountBalanceText = balanceSnapshot.hasError
-                ? 'Unavailable'
+                ? 'Error: ${balanceSnapshot.error}'
                 : balanceSnapshot.hasData
                     ? balanceSnapshot.data!.toStringAsFixed(2)
                     : 'Loading…';
