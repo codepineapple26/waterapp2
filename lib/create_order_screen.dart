@@ -402,7 +402,7 @@ try {
     setState(() => _isLoading = false);
   }
 }
-
+} // closes _submitOrder
 
   Future<void> _confirmAndSubmit() async {
     if (!widget.allowSubmit) return;
@@ -469,7 +469,7 @@ try {
     _notesController.dispose();
     super.dispose();
   }
-  }
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
