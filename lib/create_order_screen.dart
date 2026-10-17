@@ -531,7 +531,7 @@ final orderData = {
               icon: const Icon(Icons.calendar_today),
               label: Text(
                 _deliveryDate == null
-                    ? 'Choose delivery date'
+                    ? 'Expected delivery date'
                     : 'Delivery date: '
                         '${MaterialLocalizations.of(context).formatMediumDate(_deliveryDate!)}',
               ),
