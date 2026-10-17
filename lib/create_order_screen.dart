@@ -34,6 +34,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   bool _isPriceLoading = true;
   double? _pricePerBottle;
   String? _priceError;
+  String? _customerLoadError;
   String _statusMessage = '';
 
   PocketBaseService get _service => PocketBaseService();
@@ -64,33 +65,37 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 
   Future<void> _loadCustomers() async {
-  setState(() {
-    _isLoadingCustomers = true;
-    _selectedCustomer = null;
-  });
-
-  try {
-    final records = await pb.collection('users').getFullList(
-      filter: 'role = "customer"',
-    );
-
     if (!mounted) return;
 
     setState(() {
-      _customers = records;
-      _isLoadingCustomers = false;
+      _isLoadingCustomers = true;
+      _customerLoadError = null;
+      _selectedCustomer = null;
     });
-  } catch (error) {
-    debugPrint('Failed to load customers: $error');
 
-    if (!mounted) return;
+    try {
+      final records = await _service.client.collection('users').getFullList(
+            filter: 'role = "customer"',
+          );
 
-    setState(() {
-      _customers = [];
-      _isLoadingCustomers = false;
-    });
+      if (!mounted) return;
+
+      setState(() {
+        _customers = records;
+        _isLoadingCustomers = false;
+      });
+    } catch (error) {
+      debugPrint('Failed to load customers: $error');
+
+      if (!mounted) return;
+
+      setState(() {
+        _customers = [];
+        _isLoadingCustomers = false;
+        _customerLoadError = error.toString();
+      });
+    }
   }
-}
 
   Future<void> _loadPricePerBottle({bool showLoading = false}) async {
     if (showLoading && mounted) {
@@ -195,6 +200,40 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
         child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_customerLoadError != null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Could not load customers: $_customerLoadError',
+              style: const TextStyle(color: Colors.red),
+            ),
+            TextButton(
+              onPressed: _loadCustomers,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_customers.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Row(
+          children: [
+            const Expanded(child: Text('No customers were found.')),
+            TextButton(
+              onPressed: _loadCustomers,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
       );
     }
 
@@ -324,6 +363,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       final total = quantity * price;
 
       final body = <String, dynamic>{
+        // For a driver, customer.id is the selected customer's ID.
         'user_id': customer.id,
         'customer_name': customerName,
         'phone': phone,
