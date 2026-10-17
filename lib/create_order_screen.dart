@@ -64,7 +64,10 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 
   Future<void> _loadCustomers() async {
-    setState(() => _isLoadingCustomers = true);
+    setState(() {
+      _isLoadingCustomers = true;
+      _selectedCustomer = null;
+    });
 
     try {
       final records = await _service.client.collection('users').getFullList(
@@ -113,6 +116,14 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   void _loadBackendUserData() {
     final user = _service.currentUser;
     if (user == null) return;
+
+    // A driver's profile is not the customer for this order.
+    if (_isDriver) {
+      _nameController.clear();
+      _phoneController.clear();
+      _addressController.clear();
+      return;
+    }
 
     _nameController.text = user.data['name']?.toString() ?? '';
     _phoneController.text = user.data['phone']?.toString() ?? '';
@@ -191,6 +202,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
           labelText: 'Select customer',
           border: OutlineInputBorder(),
         ),
+        hint: const Text('Choose a customer'),
         items: _customers.map((customer) {
           final name = customer.data['name']?.toString() ?? 'Unnamed customer';
           final email = customer.data['email']?.toString() ?? '';
@@ -200,7 +212,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             child: Text(email.isEmpty ? name : '$name ($email)'),
           );
         }).toList(),
-        onChanged: _selectCustomer,
+        onChanged: widget.allowSubmit ? _selectCustomer : null,
         validator: (customer) =>
             customer == null ? 'Select a customer' : null,
       ),
@@ -299,17 +311,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
     try {
       final customer = _isDriver ? _selectedCustomer! : user;
-      final customerId = customer.id;
-      final customerName =
-          _nameController.text.trim().isNotEmpty
-              ? _nameController.text.trim()
-              : customer.data['name']?.toString() ?? 'Customer';
+      final customerName = _nameController.text.trim().isNotEmpty
+          ? _nameController.text.trim()
+          : customer.data['name']?.toString() ?? 'Customer';
 
       final price = await _service.getPricePerBottle();
       final total = quantity * price;
 
       final body = <String, dynamic>{
-        'user_id': customerId,
+        'user_id': customer.id,
         'customer_name': customerName,
         'phone': phone,
         'address': address,
