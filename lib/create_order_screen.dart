@@ -313,83 +313,83 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   }
 
   Future<void> _submitOrder() async {
-    if (!widget.allowSubmit) return;
+  
 
-    final user = _service.currentUser;
-    if (!_service.isLoggedIn || user == null) {
-      _showMessage('Sign in required to place an order.');
-      return;
-    }
+     if (!widget.allowSubmit) return;
 
-    if (_isDriver && _selectedCustomer == null) {
-      _showMessage('Please select a customer.');
-      return;
-    }
-// Add this after the validation checks:
-final customerId = _isDriver ? _selectedCustomer!.id : user.id;
+final user = _service.currentUser;
+if (!_service.isLoggedIn || user == null) {
+  _showMessage('Sign in required to place an order.');
+  return;
+}
 
-final orderData = {
-  // Move the fields from your existing order body here.
-  'user_id': customerId,
-  if (_isDriver) 'driver_id': user.id,
-};
-    
-    final address = _addressController.text.trim();
-    final phone = _phoneController.text.trim();
-    final quantity = _quantity;
-    final deliveryDate = _deliveryDate;
+if (_isDriver && _selectedCustomer == null) {
+  _showMessage('Please select a customer.');
+  return;
+}
 
-    if (address.isEmpty) {
-      _showMessage('Delivery address cannot be blank.');
-      return;
-    }
-    if (phone.isEmpty) {
-      _showMessage('Contact phone number cannot be blank.');
-      return;
-    }
-    if (quantity < 1) {
-      _showMessage('Quantity must be at least 1.');
-      return;
-    }
-    if (deliveryDate == null) {
-      _showMessage('Please choose a delivery date.');
-      return;
-    }
+final address = _addressController.text.trim();
+final phone = _phoneController.text.trim();
+final quantity = _quantity;
+final deliveryDate = _deliveryDate;
 
-    setState(() {
-      _isLoading = true;
-      _statusMessage = '';
-    });
+if (address.isEmpty) {
+  _showMessage('Delivery address cannot be blank.');
+  return;
+}
+if (phone.isEmpty) {
+  _showMessage('Contact phone number cannot be blank.');
+  return;
+}
+if (quantity < 1) {
+  _showMessage('Quantity must be at least 1.');
+  return;
+}
+if (deliveryDate == null) {
+  _showMessage('Please choose an expected delivery date.');
+  return;
+}
 
-    try {
-      final customer = _isDriver ? _selectedCustomer! : user;
-      final customerName = _nameController.text.trim().isNotEmpty
-          ? _nameController.text.trim()
-          : customer.data['name']?.toString() ?? 'Customer';
+setState(() {
+  _isLoading = true;
+  _statusMessage = '';
+});
 
-      final price = await _service.getPricePerBottle();
-      final total = quantity * price;
+try {
+  final customer = _isDriver ? _selectedCustomer! : user;
+  final customerName = _nameController.text.trim().isNotEmpty
+      ? _nameController.text.trim()
+      : customer.data['name']?.toString() ?? 'Customer';
 
-      final body = <String, dynamic>{
-        // For a driver, customer.id is the selected customer's ID.
-        'user_id': customer.id,
-        'customer_name': customerName,
-        'phone': phone,
-        'address': address,
-        'quantity': quantity,
-        'notes': _notesController.text.trim(),
-        'status': 'New',
-        'total': total,
-        'amount_paid': 0,
-        'ward': customer.data['ward']?.toString() ?? '',
-        'floor': customer.data['floor']?.toString() ?? '',
-        if (_isDriver) 'driver_id': user.id,
-        'delivery_schedule': jsonEncode({
-          'date': deliveryDate.toIso8601String().split('T').first,
-        }),
-      };
+  final price = await _service.getPricePerBottle();
+  final total = quantity * price;
 
-      await _service.client.collection('orders').create(body: orderData);
+  final body = <String, dynamic>{
+    'user_id': customer.id,
+    'customer_name': customerName,
+    'phone': phone,
+    'address': address,
+    'quantity': quantity,
+    'notes': _notesController.text.trim(),
+    'status': 'New',
+    'total': total,
+    'amount_paid': 0,
+    if (_isDriver) 'driver_id': user.id,
+    'delivery_schedule': deliveryDate.toIso8601String().split('T').first,
+  };
+
+  // Submit the complete body—not the old orderData map.
+  await _service.client.collection('orders').create(body: body);
+
+  // Keep your existing success handling here.
+} catch (e) {
+  _showMessage('Could not place order: $e');
+} finally {
+  if (mounted) {
+    setState(() => _isLoading = false);
+  }
+}
+
 
 
       if (!mounted) return;
