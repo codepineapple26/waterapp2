@@ -200,75 +200,36 @@ Future<double> _loadAccountBalance() async {
   }
 
   @override
-  Widget build(BuildContext context) {
-      if (_showOrderForm) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Place Order'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              setState(() {
-                _showOrderForm = false;
-                _reorderDraft = null;
-                _ordersFuture = _loadOrders();
-                _accountBalanceFuture = _loadAccountBalance();
-                _ordersVersion++;
-              });
-            },
-          ),
-        ),
-        body: CreateOrderScreen(
-          key: ValueKey('create-order-$_ordersVersion'),
-          allowSubmit: true,
-          initialValues: _reorderDraft ?? const {},
-        ),
-      );
-    }
-    
-    if (_isDriver) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Orders'),
-          actions: [
-            TextButton.icon(
-          onPressed: () => _openOrderForm(),
-          icon: const Icon(Icons.add_shopping_cart),
-          label: const Text('Place order'),
-        ),
-            IconButton(
-              tooltip: 'Refresh orders',
-              onPressed: _refreshOrders,
-              icon: const Icon(Icons.refresh),
-            ),
-            IconButton(
-              tooltip: 'Sign out',
-              onPressed: widget.onSignOut,
-              icon: const Icon(Icons.logout),
-            ),
-          ],
-        ),
-        body: ViewOrdersListScreen(
-          key: ValueKey('driver-orders-$_ordersVersion'),
-          onReorder: _handleReorder,
-        ),
-      );
-    }
-
-    
-
+Widget build(BuildContext context) {
+  if (_showOrderForm) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_currentIndex == 0 ? 'Dashboard Working' : 'My Orders'),
-        leading: _currentIndex == 1
-            ? IconButton(
-                tooltip: 'Back to dashboard',
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () {
-                  setState(() => _currentIndex = 0);
-                },
-              )
-            : null,
+        title: const Text('Place Order'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            setState(() {
+              _showOrderForm = false;
+              _reorderDraft = null;
+              _ordersFuture = _loadOrders();
+              _accountBalanceFuture = _loadAccountBalance();
+              _ordersVersion++;
+            });
+          },
+        ),
+      ),
+      body: CreateOrderScreen(
+        key: ValueKey('create-order-$_ordersVersion'),
+        allowSubmit: true,
+        initialValues: _reorderDraft ?? const {},
+      ),
+    );
+  }
+
+  if (_isDriver) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_currentIndex == 0 ? 'Dashboard' : 'My Orders'),
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -285,37 +246,104 @@ Future<double> _loadAccountBalance() async {
       body: _currentIndex == 0
           ? _buildDashboard()
           : ViewOrdersListScreen(
-              key: ValueKey('orders-$_ordersVersion'),
+              key: ValueKey('driver-orders-$_ordersVersion'),
               onReorder: _handleReorder,
             ),
-      bottomNavigationBar: BottomAppBar(
-        child: Row(
-          children: [
-            Expanded(
-              child: TextButton.icon(
-                onPressed: () => _openOrderForm(),
-                icon: const Icon(Icons.add_shopping_cart),
-                label: const Text('Place Order'),
-              ),
-            ),
-            Expanded(
-              child: TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _currentIndex = 1;
-                    _ordersFuture = _loadOrders();
-                    _ordersVersion++;
-                  });
-                },
-                icon: const Icon(Icons.list_alt),
-                label: const Text('My Orders'),
-              ),
-            ),
-          ],
-        ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex == 0 ? 0 : 2,
+        onTap: (index) {
+          if (index == 1) {
+            _openOrderForm();
+            return;
+          }
+
+          setState(() {
+            _currentIndex = index == 0 ? 0 : 1;
+
+            if (index == 2) {
+              _ordersFuture = _loadOrders();
+              _ordersVersion++;
+            }
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.add_shopping_cart),
+            label: 'Place Order',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.list_alt),
+            label: 'My Orders',
+          ),
+        ],
       ),
     );
   }
+
+  return Scaffold(
+    appBar: AppBar(
+      title: Text(_currentIndex == 0 ? 'Dashboard Working' : 'My Orders'),
+      leading: _currentIndex == 1
+          ? IconButton(
+              tooltip: 'Back to dashboard',
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () {
+                setState(() => _currentIndex = 0);
+              },
+            )
+          : null,
+      actions: [
+        IconButton(
+          tooltip: 'Refresh',
+          onPressed: _refreshOrders,
+          icon: const Icon(Icons.refresh),
+        ),
+        IconButton(
+          tooltip: 'Sign out',
+          onPressed: widget.onSignOut,
+          icon: const Icon(Icons.logout),
+        ),
+      ],
+    ),
+    body: _currentIndex == 0
+        ? _buildDashboard()
+        : ViewOrdersListScreen(
+            key: ValueKey('orders-$_ordersVersion'),
+            onReorder: _handleReorder,
+          ),
+    bottomNavigationBar: BottomAppBar(
+      child: Row(
+        children: [
+          Expanded(
+            child: TextButton.icon(
+              onPressed: _openOrderForm,
+              icon: const Icon(Icons.add_shopping_cart),
+              label: const Text('Place Order'),
+            ),
+          ),
+          Expanded(
+            child: TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  _currentIndex = 1;
+                  _ordersFuture = _loadOrders();
+                  _ordersVersion++;
+                });
+              },
+              icon: const Icon(Icons.list_alt),
+              label: const Text('My Orders'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 
   Widget _buildDashboard() {
     return FutureBuilder<List<dynamic>>(
