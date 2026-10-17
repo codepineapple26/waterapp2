@@ -226,63 +226,67 @@ Widget build(BuildContext context) {
     );
   }
 
-  if (_isDriver) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_currentIndex == 0 ? 'Dashboard' : 'My Orders'),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _refreshOrders,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: 'Sign out',
-            onPressed: widget.onSignOut,
-            icon: const Icon(Icons.logout),
-          ),
-        ],
+ if (_isDriver) {
+  return Scaffold(
+    appBar: AppBar(
+      title: Text(
+        _currentIndex == 0
+            ? 'Dashboard'
+            : _currentIndex == 1
+                ? 'Place Order'
+                : 'My Orders',
       ),
-      body: _currentIndex == 0
-          ? _buildDashboard()
-          : ViewOrdersListScreen(
-              key: ValueKey('driver-orders-$_ordersVersion'),
-              onReorder: _handleReorder,
-            ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex == 0 ? 0 : 2,
-        onTap: (index) {
-          if (index == 1) {
-            _openOrderForm();
-            return;
+      actions: [
+        IconButton(
+          tooltip: 'Refresh',
+          onPressed: _refreshOrders,
+          icon: const Icon(Icons.refresh),
+        ),
+        IconButton(
+          tooltip: 'Sign out',
+          onPressed: widget.onSignOut,
+          icon: const Icon(Icons.logout),
+        ),
+      ],
+    ),
+    body: _currentIndex == 0
+        ? _buildDashboard()
+        : _currentIndex == 1
+            ? CreateOrderScreen()
+            : ViewOrdersListScreen(
+                key: ValueKey('driver-orders-$_ordersVersion'),
+                onReorder: _handleReorder,
+              ),
+    bottomNavigationBar: BottomNavigationBar(
+      type: BottomNavigationBarType.fixed,
+      currentIndex: _currentIndex,
+      showUnselectedLabels: true,
+      onTap: (index) {
+        setState(() {
+          _currentIndex = index;
+          if (index == 2) {
+            _ordersFuture = _loadOrders();
+            _ordersVersion++;
           }
-
-          setState(() {
-            _currentIndex = index == 0 ? 0 : 1;
-
-            if (index == 2) {
-              _ordersFuture = _loadOrders();
-              _ordersVersion++;
-            }
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_shopping_cart),
-            label: 'Place Order',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt),
-            label: 'My Orders',
-          ),
-        ],
-      ),
-    );
-  }
+        });
+      },
+      items: const [
+        BottomNavigationBarItem(
+          icon: Icon(Icons.dashboard),
+          label: 'Dashboard',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.add_shopping_cart),
+          label: 'Place Order',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.list_alt),
+          label: 'My Orders',
+        ),
+      ],
+    ),
+  );
+}
 
   return Scaffold(
     appBar: AppBar(
