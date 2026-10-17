@@ -20,10 +20,11 @@ Future<void> initializePocketBase() async {
   pb = PocketBase(pocketBaseUrl, authStore: authStore);
 }
 
-
 class PocketBaseService {
   PocketBaseService._();
+
   static final PocketBaseService _instance = PocketBaseService._();
+
   factory PocketBaseService() => _instance;
 
   static const String baseUrl = pocketBaseUrl;
@@ -53,7 +54,6 @@ class PocketBaseService {
   }
 
   /// Creates a new user record in PocketBase and logs them in.
-  /// Returns the created RecordModel on success. Throws on error.
   Future<RecordModel> signUp({
     required String email,
     required String password,
@@ -166,20 +166,26 @@ class PocketBaseService {
   }
 
   Future<RecordModel> updateOrderStatus(String id, String status) async {
-    return pb.collection('orders').update(id, body: {'status': status});
+    return pb.collection('orders').update(
+      id,
+      body: {'status': status},
+    );
   }
 
   Future<RecordModel> claimOrder(String id) async {
     final userId = currentUser?.id;
     if (userId == null) throw StateError('Not logged in');
 
-    return pb.collection('orders').update(id, body: {
-      'driver_id': userId,
-      'status': 'Accepted',
-    });
+    return pb.collection('orders').update(
+      id,
+      body: {
+        'driver_id': userId,
+        'status': 'Accepted',
+      },
+    );
   }
 
-   Future<RecordModel> updateOrderFields(
+  Future<RecordModel> updateOrderFields(
     String orderId,
     Map<String, dynamic> body,
   ) {
@@ -187,10 +193,54 @@ class PocketBaseService {
   }
 
   Future<void> unclaimOrder(String id) async {
-    await pb.collection('orders').update(id, body: {
-      'driver_id': null,
-      'status': 'New',
-    });
+    await pb.collection('orders').update(
+      id,
+      body: {
+        'driver_id': null,
+        'status': 'New',
+      },
+    );
+  }
+
+  /// Confirms delivery for the signed-in customer.
+  ///
+  /// Assumes:
+  /// - `customer_confirmation` is a boolean field.
+  /// - `confirmed_at` is a PocketBase date field.
+  /// - The delivered order status is `Delivered`.
+  Future<RecordModel> confirmCustomerDelivery(String orderId) async {
+    final user = currentUser;
+
+    if (user == null) {
+      throw StateError('You must be logged in to confirm delivery.');
+    }
+
+    if (user.data['role']?.toString() != 'customer') {
+      throw StateError('Only the customer can confirm delivery.');
+    }
+
+    final order = await fetchOrderById(orderId);
+
+    if (order.data['user_id']?.toString() != user.id) {
+      throw StateError('You can only confirm delivery for your own order.');
+    }
+
+    final status = order.data['status']?.toString().toLowerCase();
+    if (status != 'delivered') {
+      throw StateError('The driver must mark the order delivered first.');
+    }
+
+    if (order.data['customer_confirmation'] == true) {
+      throw StateError('Delivery has already been confirmed.');
+    }
+
+    return pb.collection('orders').update(
+      orderId,
+      body: {
+        'customer_confirmation': true,
+        'confirmed_at': DateTime.now().toUtc().toIso8601String(),
+      },
+    );
   }
 
   Future<void> deleteOrder(String id) async {
