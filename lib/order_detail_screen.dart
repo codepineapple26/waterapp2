@@ -29,6 +29,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   String? _selectedStatus;
   String? _amountPaidOrderId;
+  bool _amountPaidLocked = false;
 
   final TextEditingController _amountPaidController =
       TextEditingController();
@@ -108,6 +109,29 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       return;
     }
 
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm delivery update'),
+        content: Text(
+          'Save status as "$newStatus" and amount paid as '
+          '${amountPaid.toStringAsFixed(2)}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
     setState(() => _isUpdatingStatus = true);
 
     try {
@@ -118,8 +142,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
       final existingDeliveryDate = order.data['delivery_date'];
 
-      // Set the date when the order first becomes Delivered.
-      // Keep an existing delivery date unchanged on later updates.
+      // The backend hook should also set this when status becomes Delivered.
       if (newStatus.toLowerCase() == 'delivered' &&
           (existingDeliveryDate == null ||
               existingDeliveryDate.toString().isEmpty)) {
@@ -305,7 +328,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           final notes = _formatDynamic(order.data['notes']);
           final status = order.getStringValue('status').trim();
           final total = _formatDynamic(order.data['total']);
-          final amountPaid = _formatDynamic(order.data['amount_paid']);
+          final rawAmountPaid = order.data['amount_paid'];
+          final amountPaidValue =
+              rawAmountPaid is num ? rawAmountPaid.toDouble() : 0.0;
+          final amountPaid = _formatDynamic(rawAmountPaid);
           final deliveryDate = _formatCreated(order.data['delivery_date']);
           final driverId = _formatDynamic(order.data['driver_id']);
           final created = _formatCreated(order.getStringValue('created'));
@@ -313,11 +339,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             order.data['updated'] ?? order.getStringValue('updated'),
           );
 
-          // Fill the payment field when this order is first displayed.
+          // Only initialize the controller once per order. A non-zero saved
+          // payment locks the field until that value is cleared in PocketBase.
           if (_amountPaidOrderId != id) {
             _amountPaidOrderId = id;
             _amountPaidController.text =
-                amountPaid == '—' ? '0' : amountPaid;
+                rawAmountPaid == null ? '0' : amountPaid;
+            _amountPaidLocked = amountPaidValue != 0;
             _selectedStatus = null;
           }
 
@@ -372,11 +400,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _amountPaidController,
+                    readOnly: _amountPaidLocked,
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Amount paid',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
+                      helperText: _amountPaidLocked
+                          ? 'Locked after a non-zero payment is saved. Clear it in PocketBase to edit.'
+                          : null,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -385,10 +417,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     child: ElevatedButton(
                       onPressed: _isUpdatingStatus
                           ? null
-                          : () => _saveOrderUpdates(
-                                order,
-                                selectedStatus,
-                              ),
+                          : () => _saveOrderUpdates(order, selectedStatus),
                       child: Text(
                         _isUpdatingStatus ? 'Saving…' : 'Save updates',
                       ),
