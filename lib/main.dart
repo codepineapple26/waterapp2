@@ -93,47 +93,35 @@ class _HomeScreenState extends State<HomeScreen> {
           sort: '-created',
         );
   }
-
-  Future<double> _loadAccountBalance() async {
-    final userId = pb.authStore.model?.id;
-
-    if (userId == null || userId.isEmpty) {
-      throw StateError('No authenticated user.');
-    }
-
-    final deposits = await pb.collection('deposits').getFullList(
-          filter: 'user_id = "$userId" && status = "approved"',
-        );
-
-    final orders = await pb.collection('orders').getFullList(
-          filter: 'user_id = "$userId"',
-        );
-
-    final depositTotal = deposits.fold<double>(0, (sum, deposit) {
-      final value = deposit.data['amount'];
-
-      if (value is num) {
-        return sum + value.toDouble();
-      }
-
-      return sum + (double.tryParse(value?.toString() ?? '') ?? 0);
-    });
-
-    final paidForDeliveredOrders = orders.fold<double>(
-  0.0,
-  (sum, order) =>
-      sum +
-      (order['status'] == 'delivered'
-          ? ((order['amount_paid'] as num?)?.toDouble() ?? 0.0)
-          : 0.0),
-);
-
-
-      return sum + _amountPaid(order);
-    });
-
-    return depositTotal - paidForDeliveredOrders;
+Future<double> _loadAccountBalance() async {
+  final userId = pb.authStore.record?.id;
+  if (userId == null) {
+    throw Exception('No authenticated user');
   }
+
+  final deposits = await pb.collection('deposits').getFullList(
+    filter: 'user_id = "$userId" && status = "approved"',
+  );
+
+  final orders = await pb.collection('orders').getFullList(
+    filter: 'user_id = "$userId" && status = "delivered"',
+  );
+
+  final depositTotal = deposits.fold<double>(
+    0.0,
+    (sum, deposit) =>
+        sum + ((deposit.data['amount'] as num?)?.toDouble() ?? 0.0),
+  );
+
+  final paidForDeliveredOrders = orders.fold<double>(
+    0.0,
+    (sum, order) =>
+        sum + ((order.data['amount_paid'] as num?)?.toDouble() ?? 0.0),
+  );
+
+  return depositTotal - paidForDeliveredOrders;
+}
+
 
   void _refreshOrders() {
     setState(() {
