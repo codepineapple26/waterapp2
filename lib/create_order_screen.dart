@@ -458,7 +458,7 @@ try {
     if (confirmed == true && mounted) {
       await _submitOrder();
     }
-  
+  }  
 
   @override
   void dispose() {
