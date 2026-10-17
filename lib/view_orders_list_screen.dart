@@ -22,6 +22,10 @@ class ViewOrdersListScreen extends StatefulWidget {
 class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
   late Future<List<RecordModel>> _ordersFuture;
 
+  String _statusFilter = 'All';
+  String _paymentFilter = 'All';
+  DateTimeRange? _deliveryRange;
+
   @override
   void initState() {
     super.initState();
@@ -64,9 +68,17 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
     }
   }
 
-  String _formatTotal(dynamic value) {
-    final total = value is num ? value : num.tryParse(value?.toString() ?? '');
-    return total == null ? '—' : '₹${total.toStringAsFixed(2)}';
+  double _number(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _formatMoney(dynamic value) {
+    final amount = value is num
+        ? value
+        : num.tryParse(value?.toString() ?? '');
+
+    return amount == null ? '—' : '₹${amount.toStringAsFixed(2)}';
   }
 
   String _formatDate(dynamic value) {
@@ -78,6 +90,100 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
     } catch (_) {
       return value.toString();
     }
+  }
+
+  String _formatDeliveryDate(dynamic value) {
+    if (value == null || value.toString().isEmpty) return '—';
+
+    try {
+      final date = DateTime.parse(value.toString());
+      return DateFormat('MMM d, y').format(date);
+    } catch (_) {
+      return value.toString();
+    }
+  }
+
+  DateTime? _dateOnly(dynamic value) {
+    if (value == null || value.toString().isEmpty) return null;
+
+    final date = DateTime.tryParse(value.toString());
+    if (date == null) return null;
+
+    return DateTime(date.year, date.month, date.day);
+  }
+
+  String _paymentCategory(RecordModel order) {
+    final paid = _number(order.data['amount_paid']);
+    final total = _number(order.data['total']);
+
+    if (paid <= 0) return 'Unpaid';
+    if (total > 0 && paid >= total) return 'Fully paid';
+    return 'Partially paid';
+  }
+
+  List<RecordModel> _filteredOrders(List<RecordModel> orders) {
+    return orders.where((order) {
+      final status = order.getStringValue('status').trim();
+      final displayedStatus = status.isEmpty ? 'New' : status;
+
+      if (_statusFilter != 'All' && displayedStatus != _statusFilter) {
+        return false;
+      }
+
+      if (_paymentFilter != 'All' &&
+          _paymentCategory(order) != _paymentFilter) {
+        return false;
+      }
+
+      if (_deliveryRange != null) {
+        // delivery_schedule is the field used when creating orders.
+        // delivery_date is checked as a fallback for older records.
+        final deliveryDate = _dateOnly(
+          order.data['delivery_schedule'] ?? order.data['delivery_date'],
+        );
+
+        if (deliveryDate == null) return false;
+
+        final start = DateTime(
+          _deliveryRange!.start.year,
+          _deliveryRange!.start.month,
+          _deliveryRange!.start.day,
+        );
+        final end = DateTime(
+          _deliveryRange!.end.year,
+          _deliveryRange!.end.month,
+          _deliveryRange!.end.day,
+        );
+
+        if (deliveryDate.isBefore(start) || deliveryDate.isAfter(end)) {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList();
+  }
+
+  Future<void> _chooseDeliveryRange() async {
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      initialDateRange: _deliveryRange,
+      helpText: 'Filter by expected delivery date',
+    );
+
+    if (range != null && mounted) {
+      setState(() => _deliveryRange = range);
+    }
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _statusFilter = 'All';
+      _paymentFilter = 'All';
+      _deliveryRange = null;
+    });
   }
 
   Future<void> _openOrderDetails(RecordModel order) async {
@@ -100,10 +206,106 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
     }
   }
 
+  Widget _filterControls(List<String> statusOptions) {
+    final selectedStatus =
+        statusOptions.contains(_statusFilter) ? _statusFilter : 'All';
+
+    final rangeLabel = _deliveryRange == null
+        ? 'Expected delivery date'
+        : '${DateFormat('MMM d, y').format(_deliveryRange!.start)}'
+            ' – ${DateFormat('MMM d, y').format(_deliveryRange!.end)}';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: selectedStatus,
+                    decoration: const InputDecoration(
+                      labelText: 'Status',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: statusOptions
+                        .map(
+                          (status) => DropdownMenuItem<String>(
+                            value: status,
+                            child: Text(status),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _statusFilter = value);
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _paymentFilter,
+                    decoration: const InputDecoration(
+                      labelText: 'Payment',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'All', child: Text('All')),
+                      DropdownMenuItem(value: 'Unpaid', child: Text('Unpaid')),
+                      DropdownMenuItem(
+                        value: 'Partially paid',
+                        child: Text('Partially paid'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Fully paid',
+                        child: Text('Fully paid'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _paymentFilter = value);
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _chooseDeliveryRange,
+                    icon: const Icon(Icons.calendar_month),
+                    label: Text(
+                      rangeLabel,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: _clearFilters,
+                  child: const Text('Clear'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(),
+      appBar: AppBar(title: const Text('View Orders')),
       body: FutureBuilder<List<RecordModel>>(
         future: _ordersFuture,
         builder: (context, snapshot) {
@@ -131,68 +333,77 @@ class _ViewOrdersListScreenState extends State<ViewOrdersListScreen> {
 
           final orders = snapshot.data ?? const <RecordModel>[];
 
-          if (orders.isEmpty) {
-            return RefreshIndicator(
-              onRefresh: _refreshOrders,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  SizedBox(height: 180),
-                  Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
+          final statusOptions = <String>{
+            'All',
+            'New',
+            'Accepted',
+            'Out for delivery',
+            'Delivered',
+            ...orders.map((order) {
+              final status = order.getStringValue('status').trim();
+              return status.isEmpty ? 'New' : status;
+            }),
+          }.toList();
+
+          final filteredOrders = _filteredOrders(orders);
+
+          return RefreshIndicator(
+            onRefresh: _refreshOrders,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              children: [
+                _filterControls(statusOptions),
+                if (orders.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 120),
+                    child: Center(
                       child: Text(
                         'No orders yet.',
                         style: TextStyle(fontSize: 18),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: _refreshOrders,
-            child: ListView.builder(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
-              itemCount: orders.length,
-              itemBuilder: (context, index) {
-                final order = orders[index];
-                final status = order.getStringValue('status').trim();
-                final quantity = order.getIntValue('quantity');
-                final address = order.getStringValue('address');
-                final total = order.data['total'];
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    leading: const Icon(
-                      Icons.water_drop,
-                      color: Colors.blue,
+                  )
+                else if (filteredOrders.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 80),
+                    child: Center(
+                      child: Text('No orders match these filters.'),
                     ),
-                    title: Text('Water quantity: $quantity'),
-                    subtitle: Text(
-                      'Address: $address\n'
-                      'Status: ${status.isNotEmpty ? status : 'New'}\n'
-                      '${_formatDate(order.data['created'])}',
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _formatTotal(total),
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                  )
+                else
+                  ...filteredOrders.map((order) {
+                    final rawStatus =
+                        order.getStringValue('status').trim();
+                    final status = rawStatus.isEmpty ? 'New' : rawStatus;
+                    final quantity = order.getIntValue('quantity');
+                    final address = order.getStringValue('address');
+                    final deliveryDate = order.data['delivery_schedule'] ??
+                        order.data['delivery_date'];
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.water_drop,
+                          color: Colors.blue,
                         ),
-                        const Icon(Icons.chevron_right),
-                      ],
-                    ),
-                    isThreeLine: true,
-                    onTap: () => _openOrderDetails(order),
-                  ),
-                );
-              },
+                        title: Text('Water quantity: $quantity'),
+                        subtitle: Text(
+                          'Address: $address\n'
+                          'Status: $status\n'
+                          'Expected delivery: '
+                          '${_formatDeliveryDate(deliveryDate)}\n'
+                          'Paid: ${_formatMoney(order.data['amount_paid'])}'
+                          ' / ${_formatMoney(order.data['total'])}',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        isThreeLine: true,
+                        onTap: () => _openOrderDetails(order),
+                      ),
+                    );
+                  }),
+              ],
             ),
           );
         },
@@ -229,6 +440,15 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   bool get _isDriver =>
       pb.authStore.model?.getStringValue('role') == 'driver';
 
+  double _number(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  // The app locks the field after a positive payment is recorded.
+  // A backend reset to 0 unlocks it again after refreshing the order.
+  bool get _amountPaidLocked => _number(_order.data['amount_paid']) > 0;
+
   @override
   void initState() {
     super.initState();
@@ -243,9 +463,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       _statuses.insert(0, _status);
     }
 
-    final amountPaid = _order.data['amount_paid'];
     _amountPaidController = TextEditingController(
-      text: amountPaid == null ? '0' : amountPaid.toString(),
+      text: (_order.data['amount_paid'] ?? 0).toString(),
     );
   }
 
@@ -256,13 +475,22 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   }
 
   Future<void> _saveDriverUpdates() async {
-    final amountPaid = double.tryParse(_amountPaidController.text.trim());
+    final body = <String, dynamic>{
+      'status': _status,
+    };
 
-    if (amountPaid == null || amountPaid < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid amount paid')),
-      );
-      return;
+    if (!_amountPaidLocked) {
+      final amountPaid =
+          double.tryParse(_amountPaidController.text.trim());
+
+      if (amountPaid == null || amountPaid < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter a valid amount paid')),
+        );
+        return;
+      }
+
+      body['amount_paid'] = amountPaid;
     }
 
     setState(() => _saving = true);
@@ -270,10 +498,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     try {
       final updatedOrder = await pb.collection('orders').update(
         _order.id,
-        body: {
-          'status': _status,
-          'amount_paid': amountPaid,
-        },
+        body: body,
       );
 
       if (!mounted) return;
@@ -281,8 +506,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       setState(() {
         _order = updatedOrder;
         _status = updatedOrder.getStringValue('status').trim();
+        if (_status.isEmpty) _status = 'New';
+
         _amountPaidController.text =
-            (updatedOrder.data['amount_paid'] ?? amountPaid).toString();
+            (updatedOrder.data['amount_paid'] ?? 0).toString();
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -301,8 +528,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
   Future<void> _refreshOrder() async {
     try {
-      final refreshedOrder =
-          await pb.collection('orders').getOne(_order.id);
+      final refreshedOrder = await pb.collection('orders').getOne(_order.id);
 
       if (!mounted) return;
 
@@ -310,6 +536,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         _order = refreshedOrder;
         _status = refreshedOrder.getStringValue('status').trim();
         if (_status.isEmpty) _status = 'New';
+
         _amountPaidController.text =
             (refreshedOrder.data['amount_paid'] ?? 0).toString();
       });
@@ -353,8 +580,21 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
+  String _formatDeliveryDate(dynamic value) {
+    if (value == null || value.toString().isEmpty) return '—';
+
+    try {
+      return DateFormat('MMM d, y').format(DateTime.parse(value.toString()));
+    } catch (_) {
+      return value.toString();
+    }
+  }
+
   String _formatMoney(dynamic value) {
-    final amount = value is num ? value : num.tryParse(value?.toString() ?? '');
+    final amount = value is num
+        ? value
+        : num.tryParse(value?.toString() ?? '');
+
     return amount == null ? '—' : '₹${amount.toStringAsFixed(2)}';
   }
 
@@ -368,6 +608,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final data = _order.data;
+    final deliveryDate =
+        data['delivery_schedule'] ?? data['delivery_date'];
 
     return Scaffold(
       appBar: AppBar(
@@ -392,8 +634,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           _detail('Order placed', _formatDate(data['created'])),
           _detail('Total', _formatMoney(data['total'])),
           _detail('Amount paid', _formatMoney(data['amount_paid'])),
-          _detail('Delivery date', _formatDate(data['delivery_date'])),
-
+          _detail('Expected delivery', _formatDeliveryDate(deliveryDate)),
           if (_isDriver) ...[
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
@@ -420,13 +661,18 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             const SizedBox(height: 12),
             TextFormField(
               controller: _amountPaidController,
-              enabled: !_saving,
+              enabled: !_saving && !_amountPaidLocked,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Update amount paid',
+              decoration: InputDecoration(
+                labelText: _amountPaidLocked
+                    ? 'Amount paid (already recorded)'
+                    : 'Update amount paid',
                 prefixText: '₹ ',
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
+                helperText: _amountPaidLocked
+                    ? 'To enter a new amount, reset it to 0 in the backend.'
+                    : null,
               ),
             ),
             const SizedBox(height: 12),
@@ -439,7 +685,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             ),
             if (_saving) const LinearProgressIndicator(),
           ],
-
           if (!_isDriver) ...[
             const SizedBox(height: 16),
             SizedBox(
