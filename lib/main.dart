@@ -205,35 +205,38 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_currentIndex == 0 ? 'Dashboard Working' : 'My Orders'),
-        leading: _currentIndex == 1
-            ? IconButton(
-                tooltip: 'Back to dashboard',
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () {
-                  setState(() => _currentIndex = 0);
-                },
-              )
-            : null,
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _refreshOrders,
-            icon: const Icon(Icons.refresh),
-          ),
-
+  appBar: AppBar(
+    title: Text(_currentIndex == 0 ? 'Dashboard Working' : 'My Orders'),
+    leading: _currentIndex == 1
+        ? IconButton(
+            tooltip: 'Back to dashboard',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              setState(() => _currentIndex = 0);
+            },
+          )
+        : null,
+    actions: [
       IconButton(
-  icon: const Icon(Icons.logout),
-  tooltip: 'Sign out',
-  onPressed: () {
-    pb.authStore.clear();
-    Navigator.of(context).pushNamedAndRemoveUntil(
-      '/login', // Replace with your login route
-      (route) => false,
-    );
-  },
-),
+        tooltip: 'Refresh',
+        onPressed: _refreshOrders,
+        icon: const Icon(Icons.refresh),
+      ),
+      IconButton(
+        icon: const Icon(Icons.logout),
+        tooltip: 'Sign out',
+        onPressed: () {
+          pb.authStore.clear();
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/login',
+            (route) => false,
+          );
+        },
+      ),
+    ], // closes actions
+  ), // closes AppBar
+
+  // Keep your existing body: ... here
 
       body: _currentIndex == 0
           ? _buildDashboard()
