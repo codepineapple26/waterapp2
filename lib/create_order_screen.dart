@@ -469,7 +469,7 @@ try {
     _notesController.dispose();
     super.dispose();
   }
-
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
