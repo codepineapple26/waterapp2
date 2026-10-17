@@ -201,36 +201,7 @@ Future<double> _loadAccountBalance() async {
 
   @override
   Widget build(BuildContext context) {
-    if (_isDriver) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Orders'),
-          actions: [
-            TextButton.icon(
-          onPressed: _openCreateOrder,
-          icon: const Icon(Icons.add_shopping_cart),
-          label: const Text('Place order'),
-        ),
-            IconButton(
-              tooltip: 'Refresh orders',
-              onPressed: _refreshOrders,
-              icon: const Icon(Icons.refresh),
-            ),
-            IconButton(
-              tooltip: 'Sign out',
-              onPressed: widget.onSignOut,
-              icon: const Icon(Icons.logout),
-            ),
-          ],
-        ),
-        body: ViewOrdersListScreen(
-          key: ValueKey('driver-orders-$_ordersVersion'),
-          onReorder: _handleReorder,
-        ),
-      );
-    }
-
-    if (_showOrderForm) {
+      if (_showOrderForm) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Place Order'),
@@ -254,6 +225,37 @@ Future<double> _loadAccountBalance() async {
         ),
       );
     }
+    
+    if (_isDriver) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Orders'),
+          actions: [
+            TextButton.icon(
+          onPressed: _openOrderForm,
+          icon: const Icon(Icons.add_shopping_cart),
+          label: const Text('Place order'),
+        ),
+            IconButton(
+              tooltip: 'Refresh orders',
+              onPressed: _refreshOrders,
+              icon: const Icon(Icons.refresh),
+            ),
+            IconButton(
+              tooltip: 'Sign out',
+              onPressed: widget.onSignOut,
+              icon: const Icon(Icons.logout),
+            ),
+          ],
+        ),
+        body: ViewOrdersListScreen(
+          key: ValueKey('driver-orders-$_ordersVersion'),
+          onReorder: _handleReorder,
+        ),
+      );
+    }
+
+    
 
     return Scaffold(
       appBar: AppBar(
