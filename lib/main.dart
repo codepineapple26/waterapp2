@@ -142,9 +142,9 @@ Future<double> _loadAccountBalance() async {
   }
 
   void _handleReorder(Map<String, dynamic> draft) {
-    if (_isDriver) return;
-    _openOrderForm(draft: draft);
-  }
+  _openOrderForm(draft: draft);
+}
+
 
   String _orderStatus(dynamic order) {
     final data = order.data as Map<String, dynamic>;
